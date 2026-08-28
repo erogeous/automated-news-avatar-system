@@ -30,6 +30,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.local.example
 
 # vercel
 .vercel
@@ -37,4 +38,10 @@ yarn-error.log*
 /dist/
 /.wrangler/
 /outputs/
+/output/
+/\.pnpm-store/
 /work/
+
+# Python runtime cache
+__pycache__/
+*.py[cod]
