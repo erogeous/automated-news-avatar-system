@@ -5,8 +5,8 @@ const ALLOWED_VOICES = new Set(["male-qn-qingse", "female-shaonv"]);
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as { text?: unknown; voiceId?: unknown; speed?: unknown };
-    if (typeof body.text !== "string" || body.text.trim().length < 5) {
-      return Response.json({ error: "请提供至少 5 个字的试听文本" }, { status: 400 });
+    if (typeof body.text !== "string" || body.text.trim().length < 100) {
+      return Response.json({ error: "完整配音稿不能少于 100 个字" }, { status: 400 });
     }
     if (typeof body.voiceId !== "string" || !ALLOWED_VOICES.has(body.voiceId)) {
       return Response.json({ error: "不支持所选音色" }, { status: 400 });
@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     return Response.json(
-      { error: error instanceof Error ? error.message : "粤语试听生成失败" },
+      { error: error instanceof Error ? error.message : "完整粤语配音生成失败" },
       { status: 502 },
     );
   }

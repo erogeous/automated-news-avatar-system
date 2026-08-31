@@ -68,14 +68,14 @@ export async function getModelStatus() {
   };
 }
 
-export async function synthesizeCantonesePreview(input: {
+export async function synthesizeCantoneseSpeech(input: {
   text: string;
   voiceId: string;
   speed?: number;
 }) {
   const { origin } = config();
-  const text = input.text.trim().slice(0, 260);
-  if (!text) throw new Error("试听文本不能为空");
+  const text = input.text.trim().slice(0, 10_000);
+  if (!text) throw new Error("配音文本不能为空");
   const speed = Math.min(1.2, Math.max(0.8, input.speed ?? 1));
 
   const response = await providerFetch(`${origin}/minimax/v1/t2a_v2`, {
@@ -118,6 +118,7 @@ export async function generateCantoneseNewsScript(sourceText: string, context?: 
   anchorName?: string;
   airDate?: string;
   farewell?: string;
+  writingRequirements?: string;
 }) {
   const { baseUrl } = config();
   const source = sourceText.trim().slice(0, 40_000);
@@ -136,6 +137,9 @@ export async function generateCantoneseNewsScript(sourceText: string, context?: 
             "你是香港电视新闻节目《點觀香港》的资深口播编辑。",
             "只可使用用户提供的新闻材料，不得加入外部知识、推测、评价或未经材料支持的因果关系。",
             "如果来源之间有冲突或关键信息不足，必须采用审慎表达，不可自行裁决或补写。",
+            context?.writingRequirements
+              ? `【最高优先级：本期人工写稿要求】\n${context.writingRequirements}\n\n先执行以上本期要求，再执行下方固定 SOP。若两者在篇幅、排序、重点、语气或结构等编辑要求上冲突，以本期人工要求为准；但不得突破新闻事实准确性、不得捏造材料、不得输出分析过程。`
+              : "【本期人工写稿要求】本期未填写额外要求，直接执行固定 SOP。",
             NEWS_SCRIPT_SOP_PROMPT,
           ].join("\n\n"),
         },

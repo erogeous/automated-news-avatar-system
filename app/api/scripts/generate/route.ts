@@ -3,18 +3,19 @@ import { readNewsLinks } from "../../../lib/news-source";
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as { sourceText?: unknown; urls?: unknown; anchorName?: unknown };
-    const sourceText = typeof body.sourceText === "string" ? body.sourceText.trim() : "";
+    const body = (await request.json()) as { writingRequirements?: unknown; sourceText?: unknown; urls?: unknown; anchorName?: unknown };
+    const writingRequirements = typeof body.writingRequirements === "string" ? body.writingRequirements.trim().slice(0, 2000) : "";
+    const legacySourceText = typeof body.sourceText === "string" ? body.sourceText.trim() : "";
     const validUrls = Array.isArray(body.urls)
       ? body.urls.filter((url): url is string => typeof url === "string" && /^https?:\/\//i.test(url.trim()))
       : [];
-    if (!validUrls.length && sourceText.length < 80) {
-      return Response.json({ error: "请至少填写 1 条新闻链接，或粘贴至少 80 个字的新闻正文" }, { status: 400 });
+    if (!validUrls.length && legacySourceText.length < 80) {
+      return Response.json({ error: "请至少填写 1 条有效新闻链接" }, { status: 400 });
     }
     const linkedArticles = validUrls.length ? await readNewsLinks(validUrls) : [];
     const combinedSource = [
-      ...linkedArticles,
-      sourceText ? `【人工补充的正文或事实摘要】\n${sourceText}` : "",
+      ...linkedArticles.map((article) => article.sourceText),
+      legacySourceText ? `【人工补充的正文或事实摘要】\n${legacySourceText}` : "",
     ].filter(Boolean).join("\n\n");
     const now = new Date();
     const airDate = new Intl.DateTimeFormat("zh-HK", {
@@ -23,11 +24,18 @@ export async function POST(request: Request) {
     const weekday = new Intl.DateTimeFormat("zh-HK", { timeZone: "Asia/Hong_Kong", weekday: "long" }).format(now);
     const anchorName = typeof body.anchorName === "string" && body.anchorName.trim()
       ? body.anchorName.trim().slice(0, 30) : "梁正言";
-    return Response.json(await generateCantoneseNewsScript(combinedSource, {
+    const result = await generateCantoneseNewsScript(combinedSource, {
       anchorName,
       airDate: `今天是${airDate}`,
       farewell: weekday === "星期五" ? "下周再見" : "明天再見",
-    }), {
+      writingRequirements,
+    });
+    return Response.json({
+      ...result,
+      articles: linkedArticles.map((article) => ({ id: article.id, index: article.index, url: article.url,
+        title: article.title, source: article.source, mediaCount: article.media.length })),
+      media: linkedArticles.flatMap((article) => article.media),
+    }, {
       headers: { "Cache-Control": "no-store" },
     });
   } catch (error) {

@@ -1,0 +1,11 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "news-avatar-heygen-gateway",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-30",
+  "workers_dev": true,
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}

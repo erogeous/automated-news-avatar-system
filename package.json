@@ -6,7 +6,9 @@
     "node": ">=22.13.0"
   },
   "scripts": {
-    "dev": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext dev",
+    "dev": "node scripts/dev-workbench.mjs",
+    "media": "node scripts/local-media-server.mjs",
+    "assets:proxy": "node scripts/public-asset-proxy.mjs",
     "build": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext build",
     "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start",
     "test": "npm run build && node --test tests/rendered-html.test.mjs",
@@ -15,6 +17,7 @@
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",
+    "ffmpeg-static": "^5.3.0",
     "react": "19.2.6",
     "react-dom": "19.2.6"
   },

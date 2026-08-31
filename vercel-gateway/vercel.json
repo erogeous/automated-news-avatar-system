@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [
+    { "source": "/health", "destination": "/api/gateway?path=health" },
+    { "source": "/v3/:path*", "destination": "/api/gateway?path=v3/:path*" }
+  ],
+  "functions": {
+    "api/gateway.js": { "maxDuration": 60 }
+  }
+}

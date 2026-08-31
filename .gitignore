@@ -41,6 +41,12 @@ yarn-error.log*
 /output/
 /\.pnpm-store/
 /work/
+/.composition-jobs/
+/.audio-slices/
+/tmp/
+/.workbuddy/
+/tsconfig.tsbuildinfo
+/scripts/bin/
 
 # Python runtime cache
 __pycache__/
