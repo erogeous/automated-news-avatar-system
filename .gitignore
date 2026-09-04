@@ -43,6 +43,7 @@ yarn-error.log*
 /work/
 /.composition-jobs/
 /.audio-slices/
+/.studio-library/
 /tmp/
 /.workbuddy/
 /tsconfig.tsbuildinfo

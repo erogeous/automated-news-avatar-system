@@ -4,16 +4,18 @@ import { randomBytes } from "node:crypto";
 import { access, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createRequire } from "node:module";
+import { handleLibrary, serveFile } from "./studio-library-http.mjs";
 
 const require = createRequire(import.meta.url);
 const ffmpegPath = require("ffmpeg-static");
 const root = process.cwd();
 const audioRoot = path.join(root, ".audio-slices");
 const compositionRoot = path.join(root, ".composition-jobs");
+const avatarOutputRoot = path.join(root, "outputs", "heygen-female-demo");
 const port = Number(process.env.MEDIA_SERVICE_PORT || 3101);
 
 function cors(headers = {}) {
-  return { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET,POST,OPTIONS", "Access-Control-Allow-Headers": "Content-Type", ...headers };
+  return { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET,HEAD,POST,OPTIONS", "Access-Control-Allow-Headers": "Content-Type,X-File-Name,Range", ...headers };
 }
 
 function json(response, status, value) {
@@ -53,8 +55,11 @@ function validUrl(value) {
 
 async function handle(request, response) {
   const url = new URL(request.url || "/", `http://127.0.0.1:${port}`);
+  // Local-only service: refuse writes from unrelated web origins.
+  if (request.headers.origin && !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(request.headers.origin)) { json(response,403,{error:"不允许此来源访问本地素材服务"}); return; }
   if (request.method === "OPTIONS") { response.writeHead(204, cors()); response.end(); return; }
   if (request.method === "GET" && url.pathname === "/health") { json(response, 200, { ready: true, ffmpeg: Boolean(ffmpegPath) }); return; }
+  if (await handleLibrary(request,response,url,{json,jsonBody,bodyBuffer,cors})) return;
 
   if (request.method === "POST" && url.pathname === "/audio/store") {
     const audio = await bodyBuffer(request);
@@ -82,10 +87,16 @@ async function handle(request, response) {
     json(response, 201, { id, segment_seconds: segmentSeconds, slices }); return;
   }
 
-  const audioMatch = url.pathname.match(/^\/audio\/([a-f0-9]{32})\/(slice-\d{3}\.mp3)$/);
-  if (request.method === "GET" && audioMatch) {
-    const audio = await readFile(path.join(audioRoot, audioMatch[1], audioMatch[2]));
-    response.writeHead(200, cors({ "Content-Type": "audio/mpeg", "Content-Length": String(audio.length), "Cache-Control": "private, max-age=3600" })); response.end(audio); return;
+  const audioMatch = url.pathname.match(/^\/audio\/([a-f0-9]{32})\/(source\.mp3|slice-\d{3}\.mp3)$/);
+  if (["GET","HEAD"].includes(request.method) && audioMatch) {
+    await serveFile(request,response,path.join(audioRoot,audioMatch[1],audioMatch[2]),"audio/mpeg",cors());return;
+  }
+
+  const avatarOutputMatch = url.pathname.match(/^\/avatar-outputs\/(slice-\d{3}-[a-f0-9]{32}\.mp4)$/);
+  if ((request.method === "GET" || request.method === "HEAD") && avatarOutputMatch) {
+    const video = await readFile(path.join(avatarOutputRoot, avatarOutputMatch[1]));
+    response.writeHead(200, cors({ "Content-Type": "video/mp4", "Content-Length": String(video.length), "Accept-Ranges": "bytes", "Cache-Control": "private, max-age=3600" }));
+    response.end(request.method === "HEAD" ? undefined : video); return;
   }
 
   if (request.method === "POST" && url.pathname === "/compositions") {

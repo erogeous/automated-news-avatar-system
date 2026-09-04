@@ -17,7 +17,8 @@ function validPublicUrl(value: unknown) {
 export async function POST(request: Request) {
   try {
     const body = await request.json() as { audioJobId?: unknown; audioDuration?: unknown; avatarSegments?: unknown; projectName?: unknown; scenes?: unknown; layout?: unknown;
-      greenScreen?: unknown; chromaSimilarity?: unknown; chromaBlend?: unknown; anchorName?: unknown; packagingAssets?: unknown };
+      greenScreen?: unknown; chromaSimilarity?: unknown; chromaBlend?: unknown; anchorName?: unknown; packagingAssets?: unknown;
+      avatarX?: unknown; avatarY?: unknown; avatarHeight?: unknown; sceneX?: unknown; sceneY?: unknown; sceneWidth?: unknown };
     const audioJobId = typeof body.audioJobId === "string" ? body.audioJobId : "";
     if (!/^[a-f0-9]{32}$/.test(audioJobId)) return Response.json({ error: "完整配音任务编号无效" }, { status: 400 });
     await access(path.join(process.cwd(), ".audio-slices", audioJobId, "source.mp3"));
@@ -49,7 +50,13 @@ export async function POST(request: Request) {
       anchorName: String(body.anchorName || "主播").slice(0, 30), packagingAssets,
       greenScreen: layout === "landscape" && body.greenScreen === true,
       chromaSimilarity: Math.max(0.05, Math.min(0.35, Number(body.chromaSimilarity) || 0.14)),
-      chromaBlend: Math.max(0.01, Math.min(0.2, Number(body.chromaBlend) || 0.055)) }, null, 2));
+      chromaBlend: Math.max(0.01, Math.min(0.2, Number(body.chromaBlend) || 0.055)),
+      avatarX: Math.max(-900, Math.min(1800, Number(body.avatarX) || 1280)),
+      avatarY: Math.max(-400, Math.min(900, Number(body.avatarY) || -40)),
+      avatarHeight: Math.max(420, Math.min(1400, Number(body.avatarHeight) || 1100)),
+      sceneX: Math.max(-100, Math.min(1500, Number(body.sceneX) || 80)),
+      sceneY: Math.max(-100, Math.min(900, Number(body.sceneY) || 250)),
+      sceneWidth: Math.max(360, Math.min(1400, Number(body.sceneWidth) || 820)) }, null, 2));
     await writeFile(path.join(jobDir, "job.json"), JSON.stringify({ id, status: "queued", progress: 0, createdAt: Date.now(), updatedAt: Date.now() }, null, 2));
     const worker = path.join(process.cwd(), "scripts", "composition-worker.mjs");
     const child = spawn(process.execPath, [worker, jobDir], { cwd: process.cwd(), detached: true, stdio: "ignore" });

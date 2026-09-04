@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { libraryRequest, useProjectArchive } from "./lib/use-project-archive";
+import "./library/style.css";
 
 type Step = 1 | 2 | 3 | 4;
 type OutputLayout = "landscape" | "portrait";
@@ -65,6 +67,13 @@ const MEDIA_SERVICE_URL = "http://127.0.0.1:3101";
 export default function Home() {
   const [step, setStep] = useState<Step>(1);
   const [urls, setUrls] = useState(initialUrls);
+  const [linkSlots, setLinkSlots] = useState(3);
+  const [activeSopLabel, setActiveSopLabel] = useState("正在读取规则…");
+  useEffect(() => {
+    const refresh = () => libraryRequest("/sops").then(data => setActiveSopLabel(data.active.version)).catch(() => setActiveSopLabel("规则服务待连接"));
+    void refresh(); window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, []);
   const [script, setScript] = useState("");
   const [busy, setBusy] = useState(false);
   const [voiceReady, setVoiceReady] = useState(false);
@@ -88,7 +97,7 @@ export default function Home() {
   const [writingRequirements, setWritingRequirements] = useState("");
   const [scriptError, setScriptError] = useState("");
   const [scriptModel, setScriptModel] = useState("");
-  const [scriptSop, setScriptSop] = useState("《點觀香港》V4.1");
+  const [scriptSop, setScriptSop] = useState("《點觀香港》V4.3");
   const [newsArticles, setNewsArticles] = useState<NewsArticle[]>([]);
   const [newsMedia, setNewsMedia] = useState<NewsMedia[]>([]);
   const [selectedMediaIds, setSelectedMediaIds] = useState<string[]>([]);
@@ -96,6 +105,12 @@ export default function Home() {
   const [outputLayout, setOutputLayout] = useState<OutputLayout>("landscape");
   const [chromaSimilarity, setChromaSimilarity] = useState(0.14);
   const [chromaBlend, setChromaBlend] = useState(0.055);
+  const [avatarX, setAvatarX] = useState(1280);
+  const [avatarY, setAvatarY] = useState(-40);
+  const [avatarHeight, setAvatarHeight] = useState(1100);
+  const [sceneX, setSceneX] = useState(80);
+  const [sceneY, setSceneY] = useState(250);
+  const [sceneWidth, setSceneWidth] = useState(820);
   const greenScreenPreviewRef = useRef<HTMLCanvasElement>(null);
   const [voiceDuration, setVoiceDuration] = useState(0);
   const [audioSlices, setAudioSlices] = useState<AudioSlice[]>([]);
@@ -104,6 +119,72 @@ export default function Home() {
   const [slicingBusy, setSlicingBusy] = useState(false);
   const [avatarSliceJobs, setAvatarSliceJobs] = useState<AvatarSliceJob[]>([]);
   const [packagingAssetIds, setPackagingAssetIds] = useState<PackagingAssetId[]>(["background", "logo", "nameplate"]);
+  const [manuscript, setManuscript] = useState("");
+  const [sopSnapshot, setSopSnapshot] = useState<null | {id:string; version:string; text:string; name:string}>(null);
+  const [mediaDownloads, setMediaDownloads] = useState<Record<string, {id:string; status:string; progress:number; error?:string}>>({});
+  const [downloadError, setDownloadError] = useState("");
+  const archive = useProjectArchive({step, urls, script, voiceReady, videoReady, avatarJobId, avatarStatus, avatarProgress, videoUrl, compositionJobId, compositionStatus, compositionProgress, compositionUrl, projectName, anchorId, writingRequirements, scriptModel, scriptSop, newsArticles, newsMedia, selectedMediaIds, sceneSettings, outputLayout, chromaSimilarity, chromaBlend, avatarX, avatarY, avatarHeight, sceneX, sceneY, sceneWidth, voiceDuration, audioSlices, audioSliceJobId, selectedSliceIds, avatarSliceJobs, packagingAssetIds, manuscript, sopSnapshot, mediaDownloads}, (saved) => {
+    setStep(saved.step ?? step);
+    setUrls(saved.urls ?? urls);
+    setScript(saved.script ?? script);
+    setVoiceReady(saved.voiceReady ?? voiceReady);
+    setVideoReady(saved.videoReady ?? videoReady);
+    setAvatarJobId(saved.avatarJobId ?? avatarJobId);
+    setAvatarStatus(saved.avatarStatus ?? avatarStatus);
+    setAvatarProgress(saved.avatarProgress ?? avatarProgress);
+    setVideoUrl(saved.videoUrl ?? videoUrl);
+    setCompositionJobId(saved.compositionJobId ?? compositionJobId);
+    setCompositionStatus(saved.compositionStatus ?? compositionStatus);
+    setCompositionProgress(saved.compositionProgress ?? compositionProgress);
+    setCompositionUrl(saved.compositionUrl ?? compositionUrl);
+    setProjectName(saved.projectName ?? projectName);
+    setAnchorId(saved.anchorId ?? anchorId);
+    setWritingRequirements(saved.writingRequirements ?? writingRequirements);
+    setScriptModel(saved.scriptModel ?? scriptModel);
+    setScriptSop(saved.scriptSop ?? scriptSop);
+    setNewsArticles(saved.newsArticles ?? newsArticles);
+    setNewsMedia(saved.newsMedia ?? newsMedia);
+    setSelectedMediaIds(saved.selectedMediaIds ?? selectedMediaIds);
+    setSceneSettings(saved.sceneSettings ?? sceneSettings);
+    setOutputLayout(saved.outputLayout ?? outputLayout);
+    setChromaSimilarity(saved.chromaSimilarity ?? chromaSimilarity);
+    setChromaBlend(saved.chromaBlend ?? chromaBlend);
+    setAvatarX(saved.avatarX ?? avatarX);
+    setAvatarY(saved.avatarY ?? avatarY);
+    setAvatarHeight(saved.avatarHeight ?? avatarHeight);
+    setSceneX(saved.sceneX ?? sceneX);
+    setSceneY(saved.sceneY ?? sceneY);
+    setSceneWidth(saved.sceneWidth ?? sceneWidth);
+    setVoiceDuration(saved.voiceDuration ?? voiceDuration);
+    setAudioSlices(saved.audioSlices ?? audioSlices);
+    setAudioSliceJobId(saved.audioSliceJobId ?? audioSliceJobId);
+    setSelectedSliceIds(saved.selectedSliceIds ?? selectedSliceIds);
+    setAvatarSliceJobs(saved.avatarSliceJobs ?? avatarSliceJobs);
+    setPackagingAssetIds(saved.packagingAssetIds ?? packagingAssetIds);
+    setManuscript(saved.manuscript ?? manuscript);
+    setSopSnapshot(saved.sopSnapshot ?? sopSnapshot);
+    setMediaDownloads(saved.mediaDownloads ?? mediaDownloads);
+    setAudioUrl(saved.audioSliceJobId ? `${MEDIA_SERVICE_URL}/audio/${saved.audioSliceJobId}/source.mp3` : "");
+  });
+  const downloading = Object.values(mediaDownloads).some(job => ["queued", "downloading"].includes(job.status));
+  useEffect(() => {
+    if (!downloading) return;
+    let cancelled = false;
+    const timer = setInterval(() => {
+      libraryRequest("/downloads").then(data => {
+        if (cancelled) return;
+        setMediaDownloads(current => Object.fromEntries(Object.entries(current).map(([key,job]) => [key, data.jobs.find((entry: {id:string}) => entry.id === job.id) || job])));
+      }).catch(error => { if (!cancelled) setDownloadError(error.message); });
+    }, 3000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [downloading]);
+  async function downloadMedia(item: NewsMedia) {
+    setDownloadError("");
+    try {
+      const job = await libraryRequest("/downloads", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sourceUrl:item.url,type:item.type,caption:item.caption})});
+      setMediaDownloads(current => ({...current,[item.id]:job}));
+    } catch(error) { setDownloadError(error instanceof Error ? error.message : "下载失败"); }
+  }
   const selectedAnchor = anchors[anchorId];
   const voiceId = selectedAnchor.voiceId;
   const validCount = urls.filter((url) => /^https?:\/\//i.test(url.trim())).length;
@@ -285,7 +366,7 @@ export default function Home() {
 
   function updateScene(id: string, patch: Partial<SceneSetting>) {
     const media = newsMedia.find((item) => item.id === id);
-    setSceneSettings((current) => ({ ...current, [id]: { duration: media?.type === "video" ? 10 : 6, cue: "", ...current[id], ...patch } }));
+    setSceneSettings((current) => ({ ...current, [id]: { ...(current[id] || { duration: media?.type === "video" ? 10 : 6, cue: "" }), ...patch } }));
   }
 
   function moveMedia(id: string, direction: -1 | 1) {
@@ -329,6 +410,12 @@ export default function Home() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "口播稿生成失败");
       setScript(data.content);
+      setManuscript(data.content);
+      setSopSnapshot(data.sopSnapshot || null);
+      setMediaDownloads({});
+      setAudioUrl(""); setAudioSliceJobId(""); setAudioSlices([]); setSelectedSliceIds([]);
+      setVoiceReady(false); setVideoReady(false); setVideoUrl(""); setAvatarSliceJobs([]);
+      setCompositionUrl(""); setCompositionJobId(""); setCompositionStatus("idle");
       setScriptModel(data.model);
       setNewsArticles(Array.isArray(data.articles) ? data.articles : []);
       setNewsMedia(Array.isArray(data.media) ? data.media : []);
@@ -344,12 +431,10 @@ export default function Home() {
   }
 
   async function generateVoice() {
+    if (!manuscript) setManuscript(script);
     setBusy(true);
     setVoiceError("");
     setAvatarError("");
-    setVideoReady(false);
-    setVideoUrl("");
-    setAvatarSliceJobs([]);
     try {
       const conversionResponse = await fetch("/api/scripts/cantonese", {
         method: "POST",
@@ -385,9 +470,11 @@ export default function Home() {
       try { stored = storeText ? JSON.parse(storeText) : {}; }
       catch { throw new Error(`本地媒体服务返回异常（HTTP ${storeResponse.status}）`); }
       if (!storeResponse.ok || !stored.id) throw new Error(stored.error || "完整配音保存失败");
+      setVideoReady(false); setVideoUrl(""); setAvatarJobId(""); setAvatarStatus("idle");
+      setCompositionUrl(""); setCompositionJobId(""); setCompositionStatus("idle");
       setAudioUrl((current) => {
         if (current) URL.revokeObjectURL(current);
-        return URL.createObjectURL(blob);
+        return `${MEDIA_SERVICE_URL}/audio/${stored.id}/source.mp3`;
       });
       setVoiceDuration(Number(response.headers.get("X-Audio-Duration-Ms") || 0));
       setAudioSlices([]);
@@ -481,6 +568,38 @@ export default function Home() {
     }
   }
 
+  async function restoreCompletedAvatarJobs() {
+    setBusy(true);
+    setAvatarError("");
+    try {
+      const response = await fetch(`/api/avatar/jobs?anchor=${encodeURIComponent(selectedAnchor.name)}`, { cache: "no-store" });
+      const data = await response.json() as { jobs?: Array<{ id: string; title: string; status: "completed"; video_url: string }>; error?: string };
+      if (!response.ok) throw new Error(data.error || "读取 HeyGen 已完成任务失败");
+      const restored: AvatarSliceJob[] = [];
+      for (const job of data.jobs || []) {
+        const match = job.title.match(/slice-(\d{3})/i);
+        const slice = match ? audioSlices.find((item) => item.index === Number(match[1])) : undefined;
+        if (!slice) continue;
+        restored.push({ sliceId: slice.id, label: `${formatClock(slice.start)}–${formatClock(slice.end)}`, start: slice.start, end: slice.end,
+          id: job.id, status: "completed", progress: 100, videoUrl: job.video_url });
+      }
+      if (!restored.length) throw new Error("没有找到与当前音频切片匹配的已完成 HeyGen 任务");
+      const unique = [...new Map(restored.map((item) => [item.sliceId, item])).values()].sort((a, b) => a.start - b.start);
+      setAvatarSliceJobs(unique);
+      setSelectedSliceIds(unique.map((item) => item.sliceId));
+      setVideoUrl(unique[0]?.videoUrl || "");
+      setVideoReady(unique.every((item) => Boolean(item.videoUrl)));
+      setAvatarStatus("completed");
+      setAvatarProgress(100);
+      setStep(4);
+    } catch (error) {
+      setAvatarError(error instanceof Error ? error.message : "恢复数字人任务失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+
   async function startComposition() {
     const completedAvatarSegments = avatarSliceJobs.filter((job) => job.status === "completed" && job.videoUrl);
     if (!audioSliceJobId || !completedAvatarSegments.length || !selectedMedia.length) return;
@@ -488,9 +607,13 @@ export default function Home() {
     setCompositionUrl("");
     try {
       let start = 0;
+      if (selectedMedia.some(item => item.type === "video" && mediaDownloads[item.id]?.status !== "completed")) {
+        throw new Error("请先返回稿件页，将已选新闻视频下载入库；下载成功后再合片。");
+      }
       const scenes = selectedMedia.map((item) => {
         const duration = sceneSettings[item.id]?.duration ?? (item.type === "video" ? 10 : 6);
-        const scene = { url: item.url, type: item.type, start, duration, cue: sceneSettings[item.id]?.cue || "" };
+        const downloaded = mediaDownloads[item.id];
+        const scene = { url: downloaded?.status === "completed" ? `${MEDIA_SERVICE_URL}/library/downloads/${downloaded.id}/file` : item.url, type: item.type, start, duration, cue: sceneSettings[item.id]?.cue || "" };
         start += duration;
         return scene;
       });
@@ -501,6 +624,7 @@ export default function Home() {
           avatarSegments: completedAvatarSegments.map((job) => ({ url: job.videoUrl, start: job.start, end: job.end })),
           projectName, scenes, layout: outputLayout,
           greenScreen: outputLayout === "landscape", chromaSimilarity, chromaBlend,
+          avatarX, avatarY, avatarHeight, sceneX, sceneY, sceneWidth,
           anchorName: selectedAnchor.name, packagingAssets: packagingAssetIds }),
       });
       const data = await response.json();
@@ -527,12 +651,13 @@ export default function Home() {
       </header>
 
       <section className="shell">
+        <div className="archiveBar"><span>{archive.status}</span><div><button disabled={!archive.ready} onClick={() => void archive.save()}>保存当前项目</button> <a href="/library" target="_blank" rel="noreferrer" onClick={() => void archive.save()}>历史项目 · 素材库 · SOP ↗</a></div></div>
         <nav className="steps" aria-label="制作步骤">
           {stepNames.map((name, index) => {
             const number = index + 1;
             const state = number < step ? "done" : number === step ? "active" : "";
             return (
-              <button key={name} className={`step ${state}`} onClick={() => number <= step && setStep(number as Step)}>
+              <button key={name} className={`step ${state}`} disabled={number > step || busy || slicingBusy} aria-current={number === step ? "step" : undefined} onClick={() => number <= step && setStep(number as Step)}>
                 <span>{number < step ? "✓" : number}</span>
                 <b>{name}</b>
               </button>
@@ -543,13 +668,13 @@ export default function Home() {
         {step === 1 && (
           <section className="workspace">
             <div className="sectionHead">
-              <div><span className="eyebrow">STEP 01</span><h2>输入新闻</h2><p>粘贴 1–10 条公开新闻链接，后台将读取正文并合并成口播稿。</p></div>
+              <div><span className="eyebrow">01 / CONTENT BRIEF</span><h2>开始本期新闻制作</h2><p>添加新闻来源，明确写稿要求，选好本期主播。</p></div>
               <div className="counter"><b>{validCount}</b><span>/ 10 条可用</span></div>
             </div>
             <label className="fieldLabel" htmlFor="project-name">本期名称</label>
             <input id="project-name" className="titleInput" value={projectName} onChange={(e) => setProjectName(e.target.value)} />
             <div className="urlList">
-              {urls.map((url, index) => (
+              {urls.slice(0, Math.max(linkSlots, urls.reduce((last, url, i) => url.trim() ? i + 1 : last, 0))).map((url, index) => (
                 <label className="urlRow" key={index}>
                   <span>{String(index + 1).padStart(2, "0")}</span>
                   <input value={url} onChange={(e) => updateUrl(index, e.target.value)} placeholder="https://example.com/news/article" aria-label={`新闻链接 ${index + 1}`} />
@@ -557,14 +682,15 @@ export default function Home() {
                 </label>
               ))}
             </div>
+            <div className="linkTools"><span>至少 1 条即可开始，最多 10 条。系统会同时提取新闻素材。</span><button className="secondary" disabled={Math.max(linkSlots, urls.reduce((last,url,i) => url.trim() ? i+1 : last,0)) >= 10} onClick={() => setLinkSlots(Math.min(10, Math.max(linkSlots,urls.reduce((last,url,i) => url.trim() ? i+1 : last,0))+1))}>＋ 添加新闻链接</button></div>
             <label className="fieldLabel sourceLabel" htmlFor="writing-requirements">本期写稿要求 <span>选填 · 优先于固定 SOP</span></label>
             <textarea id="writing-requirements" className="sourceEditor requirementsEditor" value={writingRequirements} maxLength={2000} onChange={(e) => setWritingRequirements(e.target.value)} placeholder="填写本期稿件的特殊要求，例如：重点突出第一条新闻；整体控制在 4 分钟；第二条只作简讯；语气保持客观克制；结尾不要额外总结。系统会先执行本期要求，再阅读固定 SOP，最后依据新闻原文写稿。" />
-            <div className="requirementsMeta"><span>执行顺序：本期人工要求 → 《點觀香港》SOP V4.1 → 新闻事实材料 → 生成母稿</span><b>{writingRequirements.length} / 2000</b></div>
+            <div className="requirementsMeta"><span>执行顺序：本期要求 → 当前 SOP（{activeSopLabel}）→ 新闻事实 → 母稿</span><b>{writingRequirements.length} / 2000</b></div>
             <div className="anchorSection scheduleAnchor">
               <div className="anchorSectionHead"><div><b>选择本期排班主播</b><span>写稿前锁定主播姓名、形象和粤语音色，开场将直接写入正确姓名。</span></div><em>写稿基础配置</em></div>
               <div className="anchorGrid" aria-label="本期排班主播选择">
                 {Object.values(anchors).map((anchor) => (
-                  <button key={anchor.id} className={`anchorCard ${anchorId === anchor.id ? "selected" : ""}`} onClick={() => setAnchorId(anchor.id)}>
+                  <button key={anchor.id} disabled={busy} aria-pressed={anchorId === anchor.id} className={`anchorCard ${anchorId === anchor.id ? "selected" : ""}`} onClick={() => setAnchorId(anchor.id)}>
                     <img src={anchor.portrait} alt={`${anchor.name}，${anchor.role}`} />
                     <span className="anchorCardBody"><span className="anchorCheck">{anchorId === anchor.id ? "✓" : ""}</span><b>{anchor.name}</b><small>{anchor.role}</small><i>{anchor.voiceName}</i></span>
                   </button>
@@ -572,21 +698,22 @@ export default function Home() {
               </div>
             </div>
             {scriptError && <div className="errorNotice" role="alert">{scriptError}</div>}
-            <div className="actionBar"><p>填写至少 1 条有效链接即可；本期要求将优先应用，同时提取正文、图片和视频候选素材。</p><button className="primary" disabled={!validCount || busy || connection !== "ready"} onClick={generateScript}>{busy ? "正在读取要求、SOP 与新闻…" : "按本期要求读取新闻并生成母稿"}</button></div>
+            <div className="actionBar"><p>{!validCount ? "添加新闻链接后即可开始。" : `已添加 ${validCount} 条来源 · 本期主播 ${selectedAnchor.name}`}</p><button className="primary" disabled={!validCount || busy || connection !== "ready"} onClick={generateScript}>{busy ? "正在读取要求、SOP 与新闻…" : "生成本期母稿 →"}</button></div>
           </section>
         )}
 
         {step === 2 && (
           <section className="workspace">
-            <div className="sectionHead"><div><span className="eyebrow">STEP 02</span><h2>修改并确认书面母稿</h2><p>{scriptModel ? `由 ${scriptModel} 按 V4.1 生成繁体中文母稿，请人工核对事实；确认后系统再转正式香港粤语。` : "请检查并修改书面母稿。"}</p></div><button className="secondary" onClick={() => setStep(1)}>返回新闻</button></div>
+            <div className="sectionHead"><div><span className="eyebrow">STEP 02</span><h2>修改并确认书面母稿</h2><p>{scriptModel ? `由 ${scriptModel} 按 ${scriptSop} 生成母稿；核对事实后再转香港粤语。` : "请检查并修改书面母稿。"}</p></div><button className="secondary" disabled={busy} onClick={() => setStep(1)}>返回新闻</button></div>
             <details className="sopCard">
               <summary><span className="sopStatus">写稿规范已启用</span><b>{scriptSop}</b><small>查看核心规则</small></summary>
               <div className="sopRules">
-                <span>先写今日增量，再决定排序与篇幅</span><span>头条排序不等于篇幅排序</span><span>多条新闻只按真实关系串联</span><span>事实、数据及权威信息优先</span><span>固定开场、赞助、主播和结尾齐全</span><span>先确认繁体母稿，再转香港粤语</span>
+                <span>先写今日增量，再决定排序与篇幅</span><span>消息不能升级为官方结论</span><span>阶段数据与最终数据分清</span><span>多条新闻只按真实关系串联</span><span>观点由行动、数据和结果支撑</span><span>交稿前执行20项自检</span><span>固定开场、赞助、主播和结尾齐全</span><span>先确认繁体母稿，再转香港粤语</span>
               </div>
             </details>
             <div className="metricRow"><div><b>{charCount}</b><span>汉字</span></div><div><b>{minutes}</b><span>预计分钟</span></div><div><b>{validCount}</b><span>条新闻来源</span></div><div><b className={charCount >= 900 && charCount <= 1100 ? "good" : "warn"}>{charCount >= 900 && charCount <= 1100 ? "合适" : "需调整"}</b><span>稿件长度</span></div></div>
-            <textarea className="scriptEditor" value={script} onChange={(e) => setScript(e.target.value)} aria-label="口播稿" />
+            <textarea className="scriptEditor" value={script} onChange={(e) => { setScript(e.target.value); if (!voiceReady) setManuscript(e.target.value); }} aria-label="口播稿" />
+            {voiceReady && <p className="libraryHint">已有配音属于上一次确认的稿件。若修改了当前正文，请重新生成配音再继续；历史版本保留原成果。</p>}
             {newsArticles.length > 0 && (
               <section className="mediaLibrary" aria-label="新闻素材库预览">
                 <div className="mediaLibraryHead">
@@ -611,6 +738,7 @@ export default function Home() {
                                 {sequence >= 0 && <strong className="sequenceBadge">{sequence + 1}</strong>}
                               </a>
                               <div className="mediaMeta"><div><b>{item.caption || (item.type === "video" ? "新闻视频" : "新闻图片")}</b><span>{item.source}</span></div><button onClick={() => toggleMedia(item.id)}>{sequence >= 0 ? "移除" : "加入分镜"}</button></div>
+                              <div className="mediaDownloadStatus">{mediaDownloads[item.id]?.status === "completed" ? <a href={`/api/library/downloads/${mediaDownloads[item.id].id}/file`} target="_blank" rel="noreferrer">已入库 · 打开素材</a> : <button disabled={["queued","downloading"].includes(mediaDownloads[item.id]?.status)} onClick={() => void downloadMedia(item)}>{["queued","downloading"].includes(mediaDownloads[item.id]?.status) ? `下载中 ${mediaDownloads[item.id].progress}%` : mediaDownloads[item.id]?.status === "failed" ? "重试下载" : "下载入库"}</button>}{mediaDownloads[item.id]?.error && <small>{mediaDownloads[item.id].error}</small>}</div>
                             </article>
                           );})}
                         </div>
@@ -619,6 +747,7 @@ export default function Home() {
                   );
                 })}
                 <section className="storyboard" aria-label="分镜排序">
+                  {downloadError && <p role="alert">{downloadError}</p>}
                   <div className="storyboardHead"><div><h4>分镜序列</h4><p>设置素材顺序、画面时长和对应的口播提示。</p></div><div className="storyboardSummary"><button className="autoArrange" onClick={autoArrangeStoryboard}>自动匹配稿件</button><span><b>{selectedMedia.length}</b> 镜头</span><span><b>{storyboardDuration}</b> 秒素材覆盖</span>{selectedMediaIds.length > 0 && <button onClick={() => setSelectedMediaIds([])}>清空</button>}</div></div>
                   {selectedMedia.length ? (
                     <ol className="storyboardList">
@@ -648,7 +777,7 @@ export default function Home() {
               </section>
             )}
             {voiceError && <div className="errorNotice" role="alert">{voiceError}</div>}
-            <div className="notice"><span>i</span><p>确认后将锁定书面母稿，按本期主播姓名转成正式香港粤语，再调用固定音色生成配音。</p></div>
+            <div className="notice"><span>i</span><p>确认后将锁定书面母稿，按本期主播姓名转成正式香港粤语，并在自然换气位置加入 0.15 秒短停顿，再调用固定音色生成配音。</p></div>
             <div className="actionBar"><p>排班主播：{selectedAnchor.name}，自动匹配“{selectedAnchor.voiceName}”；如需更换，请返回第一页重新写稿。</p><button className="primary" disabled={script.trim().length < 100 || busy || connection !== "ready"} onClick={generateVoice}>{busy ? "正在转写粤语并生成完整配音…" : `确认母稿并生成完整配音`}</button></div>
           </section>
         )}
@@ -680,7 +809,7 @@ export default function Home() {
               {outputLayout === "landscape" && <section className="chromaCalibration"><div className="chromaPreview"><canvas ref={greenScreenPreviewRef} width="640" height="360" aria-label="绿幕抠像合成预览" /></div><div className="chromaControls"><div><b>绿幕校准</b><span>实时预览仅用于估算边缘；最终参数会传给 FFmpeg。</span></div><label><span>相似度 <b>{chromaSimilarity.toFixed(3)}</b></span><input type="range" min="0.05" max="0.35" step="0.005" value={chromaSimilarity} onChange={(event) => setChromaSimilarity(Number(event.target.value))} /><small>提高可去除更多绿色，过高会侵蚀人物。</small></label><label><span>边缘柔化 <b>{chromaBlend.toFixed(3)}</b></span><input type="range" min="0.01" max="0.2" step="0.005" value={chromaBlend} onChange={(event) => setChromaBlend(Number(event.target.value))} /><small>提高可让发丝边缘更柔和，过高会产生半透明。</small></label><button onClick={() => { setChromaSimilarity(0.14); setChromaBlend(0.055); }}>恢复推荐值</button></div></section>}
             </section>
             {avatarError && <div className="errorNotice" role="alert">{avatarError}</div>}
-            <div className="actionBar"><button className="secondary" onClick={() => { setVoiceReady(false); setStep(2); }}>返回更换主播或稿件</button><button className="primary" disabled={!voiceReady || !selectedSliceIds.length || busy || slicingBusy} onClick={generateAvatar}>{busy ? "正在逐段提交 HeyGen 任务…" : `生成已选 ${selectedSliceIds.length} 段数字人`}</button></div>
+            <div className="actionBar"><button className="secondary" onClick={() => { setVoiceReady(false); setStep(2); }}>返回更换主播或稿件</button><button className="secondary" disabled={!audioSlices.length || busy} onClick={restoreCompletedAvatarJobs}>{busy ? "正在读取…" : "载入 HeyGen 已完成片段"}</button><button className="primary" disabled={!voiceReady || !selectedSliceIds.length || busy || slicingBusy} onClick={generateAvatar}>{busy ? "正在处理…" : `生成已选 ${selectedSliceIds.length} 段数字人`}</button></div>
           </section>
         )}
 
@@ -695,6 +824,7 @@ export default function Home() {
             <section className="compositionPanel">
               <div className="compositionHead"><div><span className="eyebrow">AUTO EDIT</span><h3>自动合片任务</h3><p>完整粤语配音作为主轨，按原始时间码插入数字人片段，再叠加新闻素材和固定包装。</p></div><span className={`status ${compositionStatus === "completed" ? "success" : compositionStatus === "failed" ? "error" : "pending"}`}>{compositionStatus === "idle" ? "尚未开始" : compositionStatus === "completed" ? "成片完成" : compositionStatus === "failed" ? "合片失败" : `${compositionStatus === "downloading" ? "下载素材" : compositionStatus === "rendering" ? "FFmpeg 合成" : "任务排队"} ${compositionProgress}%`}</span></div>
               <div className="compositionStats"><div><span>完整音频主轨</span><b>{audioSliceJobId ? "已就绪" : "等待切片"}</b></div><div><span>数字人出镜</span><b>{avatarSliceJobs.filter((job) => job.status === "completed" && job.videoUrl).length} 个片段</b></div><div><span>新闻分镜</span><b>{selectedMedia.length} 个镜头</b></div><div><span>输出规格</span><b>{outputLayout === "landscape" ? "1920 × 1080" : "720 × 1280"} MP4</b></div></div>
+              {outputLayout === "landscape" && <section className="composerControls"><div><h4>手动合片布局</h4><p>先调整主播与素材窗位置，再提交 FFmpeg。HeyGen 横屏绿幕会自动裁掉左右白边。</p></div><div className="composerControlGrid"><label><span>主播横向位置 <b>{avatarX}</b></span><input type="range" min="700" max="1550" step="10" value={avatarX} onChange={(event) => setAvatarX(Number(event.target.value))} /></label><label><span>主播纵向位置 <b>{avatarY}</b></span><input type="range" min="-300" max="300" step="10" value={avatarY} onChange={(event) => setAvatarY(Number(event.target.value))} /></label><label><span>主播大小 <b>{avatarHeight}</b></span><input type="range" min="600" max="1400" step="20" value={avatarHeight} onChange={(event) => setAvatarHeight(Number(event.target.value))} /></label><label><span>素材窗横向位置 <b>{sceneX}</b></span><input type="range" min="0" max="1000" step="10" value={sceneX} onChange={(event) => setSceneX(Number(event.target.value))} /></label><label><span>素材窗纵向位置 <b>{sceneY}</b></span><input type="range" min="0" max="700" step="10" value={sceneY} onChange={(event) => setSceneY(Number(event.target.value))} /></label><label><span>素材窗大小 <b>{sceneWidth}</b></span><input type="range" min="420" max="1200" step="20" value={sceneWidth} onChange={(event) => setSceneWidth(Number(event.target.value))} /></label></div><button className="secondary" onClick={() => { setAvatarX(1280); setAvatarY(-40); setAvatarHeight(1100); setSceneX(80); setSceneY(250); setSceneWidth(820); }}>恢复推荐布局</button></section>}
               {compositionError && <div className="errorNotice" role="alert">{compositionError}</div>}
               <div className="actionBar"><p>{!selectedMedia.length ? "请返回稿件页选择并编排素材。" : outputLayout === "landscape" ? "完整配音全程连续；数字人只在已选切片时间段出镜。" : "竖屏按时间轴叠加数字人和全屏新闻素材，完整配音连续。"}</p>{compositionUrl ? <a className="primary downloadLink" href={compositionUrl}>下载自动剪辑成片</a> : <button className="primary" disabled={!videoReady || !audioSliceJobId || !selectedMedia.length || ["queued", "downloading", "rendering"].includes(compositionStatus)} onClick={startComposition}>{["queued", "downloading", "rendering"].includes(compositionStatus) ? `正在合片 ${compositionProgress}%` : compositionStatus === "failed" ? "重新提交合片" : "开始自动合片"}</button>}</div>
             </section>

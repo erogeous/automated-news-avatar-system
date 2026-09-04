@@ -78,10 +78,10 @@ async function main() {
     const outputLabel = `avatarMix${index}`;
     if (landscape) {
       const keyFilter = input.greenScreen
-        ? `chromakey=0x00FF00:${input.chromaSimilarity || 0.14}:${input.chromaBlend || 0.055},despill=type=green,`
+        ? `crop=608:1080:656:0,chromakey=0x00FF00:${input.chromaSimilarity || 0.14}:${input.chromaBlend || 0.055},despill=type=green,`
         : "";
-      filters.push(`[${inputIndex}:v]${keyFilter}eq=brightness=0.06:contrast=1.04:saturation=1.03,scale=-1:1080,setsar=1,setpts=PTS-STARTPTS+${segment.start}/TB[${avatarLabel}]`);
-      filters.push(`[${previous}][${avatarLabel}]overlay=x=W-w-35:y=-36:eof_action=pass:shortest=0:enable='between(t,${segment.start},${segment.end})'[${outputLabel}]`);
+      filters.push(`[${inputIndex}:v]${keyFilter}eq=brightness=0.06:contrast=1.04:saturation=1.03,scale=-1:${input.avatarHeight || 1100},setsar=1,setpts=PTS-STARTPTS+${segment.start}/TB[${avatarLabel}]`);
+      filters.push(`[${previous}][${avatarLabel}]overlay=x=${input.avatarX ?? 1280}:y=${input.avatarY ?? -40}:eof_action=pass:shortest=0:enable='between(t,${segment.start},${segment.end})'[${outputLabel}]`);
     } else {
       filters.push(`[${inputIndex}:v]scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2:color=black@0,setsar=1,setpts=PTS-STARTPTS+${segment.start}/TB[${avatarLabel}]`);
       filters.push(`[${previous}][${avatarLabel}]overlay=eof_action=pass:shortest=0:enable='between(t,${segment.start},${segment.end})'[${outputLabel}]`);
@@ -94,8 +94,10 @@ async function main() {
     const sceneLabel = `scene${index}`;
     const outputLabel = `mix${index}`;
     if (landscape) {
-      filters.push(`[${inputIndex}:v]scale=900:510:force_original_aspect_ratio=decrease,pad=900:510:(ow-iw)/2:(oh-ih)/2:0x101923,setsar=1,setpts=PTS-STARTPTS+${scene.start}/TB[${sceneLabel}]`);
-      filters.push(`[${previous}][${sceneLabel}]overlay=x=70:y=285:eof_action=pass:shortest=0:enable='between(t,${scene.start},${scene.start + scene.duration})'[${outputLabel}]`);
+      const sceneWidth = input.sceneWidth || 820;
+      const sceneHeight = Math.round(sceneWidth * 9 / 16);
+      filters.push(`[${inputIndex}:v]scale=${sceneWidth}:${sceneHeight}:force_original_aspect_ratio=decrease,pad=${sceneWidth}:${sceneHeight}:(ow-iw)/2:(oh-ih)/2:0x101923,setsar=1,setpts=PTS-STARTPTS+${scene.start}/TB[${sceneLabel}]`);
+      filters.push(`[${previous}][${sceneLabel}]overlay=x=${input.sceneX ?? 80}:y=${input.sceneY ?? 250}:eof_action=pass:shortest=0:enable='between(t,${scene.start},${scene.start + scene.duration})'[${outputLabel}]`);
     } else {
       filters.push(`[${inputIndex}:v]scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2:black,setsar=1,setpts=PTS-STARTPTS+${scene.start}/TB[${sceneLabel}]`);
       filters.push(`[${previous}][${sceneLabel}]overlay=eof_action=pass:shortest=0:enable='between(t,${scene.start},${scene.start + scene.duration})'[${outputLabel}]`);

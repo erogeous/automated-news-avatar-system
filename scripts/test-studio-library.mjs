@@ -1,0 +1,44 @@
+import assert from "node:assert/strict";
+import { mkdtemp, readFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import http from "node:http";
+process.env.STUDIO_LIBRARY_DIR=await mkdtemp(path.join(os.tmpdir(),"avatar-library-test-"));
+const {parseSop,newId,saveProject,readJson,libraryRoot,activeSop,atomicJson}=await import("./studio-library.mjs");
+const {publicAddress,safeBytes}=await import("./library-download.mjs");
+const {handleLibrary}=await import("./studio-library-http.mjs");
+const id=newId(),snapshot={projectName:"测试一期",script:"测试稿件",urls:[],audioSliceJobId:"",step:2};
+assert.equal((await saveProject({id,expectedRevision:0,snapshot})).revision,1);
+assert.equal((await saveProject({id,expectedRevision:1,snapshot:{...snapshot,script:"第二版"}})).revision,2);
+await assert.rejects(saveProject({id,expectedRevision:1,snapshot}),/其他页面/);
+assert.equal((await readJson(path.join(libraryRoot,"projects",id,"versions","1.json"))).snapshot.script,"测试稿件");
+assert.equal((await activeSop()).version,"V4.3");
+assert.throws(()=>parseSop(Buffer.from("invalid"),"bad.docx"),/不完整/);
+assert.throws(()=>parseSop(Buffer.from("hi"),"bad.txt"),/30/);
+for(const address of ["127.0.0.1","10.0.0.1","169.254.169.254","192.168.1.1","::1","::ffff:127.0.0.1","fc00::1","2001:db8::1"])assert.equal(publicAddress(address),false,address);
+assert.equal(publicAddress("8.8.8.8"),true);
+await assert.rejects(safeBytes("http://127.0.0.1/test",{left:100}),/拒绝/);
+
+const json=(res,status,value)=>{res.writeHead(status,{"Content-Type":"application/json"});res.end(JSON.stringify(value));};
+const bodyBuffer=async req=>{const chunks=[];for await(const chunk of req)chunks.push(chunk);return Buffer.concat(chunks);};
+const server=http.createServer((req,res)=>handleLibrary(req,res,new URL(req.url,"http://localhost"),{json,bodyBuffer,jsonBody:async r=>JSON.parse((await bodyBuffer(r)).toString()),cors:()=>({})}).catch(error=>json(res,error.status||500,{error:error.message})));
+await new Promise(resolve=>server.listen(0,"127.0.0.1",resolve));
+const base=`http://127.0.0.1:${server.address().port}/library`;
+try {
+  const text="本期写稿规则 V9.1：事实必须核实，保留新闻来源，示例不作为本期事实。";
+  const uploaded=await fetch(base+"/sops",{method:"POST",headers:{"X-File-Name":encodeURIComponent("测试规则.md")},body:text}).then(r=>r.json());
+  assert.equal(uploaded.text,text);assert.equal((await activeSop()).version,"V4.3");
+  assert.equal((await fetch(base+"/sops/activate",{method:"POST",body:JSON.stringify({id:uploaded.id})})).status,200);
+  assert.equal((await activeSop()).text,text);
+  await fetch(base+"/sops/activate",{method:"POST",body:JSON.stringify({id:"builtin-v4-3"})});
+  assert.equal((await activeSop()).version,"V4.3");
+  assert.equal((await fetch(base+"/projects").then(r=>r.json())).projects.length,1);
+  const mediaId=newId(),dir=path.join(libraryRoot,"downloads",mediaId);
+  await atomicJson(path.join(dir,"record.json"),{id:mediaId,status:"completed",file:"media.mp4",type:"video"});
+  const {writeFile}=await import("node:fs/promises");await writeFile(path.join(dir,"media.mp4"),Buffer.from("0123456789"));
+  const partial=await fetch(base+"/downloads/"+mediaId+"/file",{headers:{Range:"bytes=2-5"}});
+  assert.equal(partial.status,206);assert.equal(await partial.text(),"2345");
+  assert.equal((await fetch(base+"/downloads/"+mediaId+"/file",{headers:{Range:"bytes=20-"}})).status,416);
+  assert.equal((await fetch(base+"/downloads/"+mediaId+"/file",{method:"HEAD"})).headers.get("content-length"),"10");
+} finally {await new Promise(resolve=>server.close(resolve));}
+console.log("PASS: revision preservation/conflict, SOP preview/activate/rollback, private-network rejection, archive APIs and media ranges. Isolated temporary store; no model calls.");

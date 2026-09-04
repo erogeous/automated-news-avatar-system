@@ -1,0 +1,40 @@
+.studioFrame{display:flex;min-height:100vh}
+.studioContent{min-width:0;flex:1;margin-left:218px;background:radial-gradient(ellipse at top right,#dcecff66,transparent 55%),var(--bg)}
+.studioNav{width:218px;position:fixed;inset:0 auto 0 0;z-index:25;padding:30px 18px 22px;background:linear-gradient(165deg,#07172b,#0a2042 65%,#0c2c58);color:#e4efff;display:flex;flex-direction:column}
+.studioBrand{display:flex;align-items:center;gap:10px;color:#fff;text-decoration:none;margin:0 4px 45px;font-size:18px;font-weight:750}
+.studioBrand>span{display:grid;place-items:center;width:38px;height:40px;background:#1679f3;border:1px solid #5cacff;border-radius:12px;color:#fff}
+.studioBrand small{display:block;font-size:7px;font-weight:500;letter-spacing:1.2px;margin-top:6px;color:#9eb9d8}
+.navGroupLabel{font-size:10px;color:#879fbb;margin:0 14px 12px;letter-spacing:2px}
+.studioNav nav{display:grid;gap:7px}
+.studioNav nav a{display:flex;align-items:center;gap:12px;padding:13px 14px;border:1px solid transparent;border-radius:9px;text-decoration:none;font-size:13px;color:#bacbe0}
+.studioNav nav a>span{font-size:19px;width:20px;text-align:center;color:#84aeeb}
+.studioNav nav a small{margin-left:auto;color:#89a5c9}
+.studioNav nav a:hover{background:#ffffff0b;color:white}
+.studioNav nav a[aria-current=page]{background:#176cf02b;border-color:#3b8eff38;color:#fff}
+.studioNav nav a[aria-current=page]>span{color:#61b4ff}
+.navFoot{margin-top:auto;border-top:1px solid #ffffff12;padding:23px 12px 0;font-size:12px;color:#c3d6ed}
+.navFoot p{font-size:11px;line-height:1.9;color:#8099b8;margin:14px 0}.navFoot small{font-size:10px;color:#6f88a8}.localDot{display:inline-block;width:6px;height:6px;border-radius:50%;background:#69d2af;margin-right:6px}
+.studioFrame .topbar{height:78px;padding:0 32px;background:#f8fbffed;border-bottom:1px solid #dce6f2}
+.studioFrame .topbar .brandMark{display:none}.studioFrame .topbar h1{font-size:16px;font-weight:650}.studioFrame .topbar p{font-size:11px;color:#8190a3}.studioFrame .prototypeBadge{font-weight:550;font-size:11px}
+.studioFrame .shell{width:min(1180px,calc(100% - 64px));margin:0 auto 40px}
+.studioFrame .archiveBar{min-height:62px;justify-content:space-between;font-size:11px;margin-bottom:4px}
+.studioFrame .archiveBar button{background:transparent;border:1px solid var(--line);border-radius:7px;padding:6px 10px;color:#345477;font-size:11px;margin-right:8px}
+.studioFrame .archiveBar a{color:#4c6b91;text-decoration:none}.studioFrame .archiveBar a:hover{text-decoration:underline}
+.studioFrame .steps{gap:8px;padding:8px;background:#e1eaf5a6;border:1px solid #dbe5f2;border-radius:12px;margin-bottom:20px}
+.studioFrame .step{justify-content:flex-start;padding:10px 14px;border-radius:8px;color:#7e8fa6;min-width:0}
+.studioFrame .step:not(:last-child):after{display:none}.studioFrame .step.active{background:#fff;box-shadow:0 2px 6px #143b6c0a;color:var(--blue)}
+.studioFrame .step b{font-size:12px;font-weight:650}.studioFrame .step span{width:24px;height:24px;font-size:10px}.studioFrame .step.active span{background:var(--blue);color:#fff;box-shadow:none}
+.studioFrame .workspace{padding:28px 32px;border-radius:16px}.studioFrame .sectionHead{margin-bottom:24px}.studioFrame .sectionHead h2{font-size:23px;letter-spacing:-.6px;font-weight:650;margin:7px 0 8px}.studioFrame .sectionHead p{font-size:12px;line-height:1.7}.studioFrame .eyebrow{font-size:9px;letter-spacing:1.7px;color:#6281a5}.studioFrame .counter b{font-size:26px;color:#1e5caf}.studioFrame .counter span{font-size:10px}
+.studioFrame .titleInput,.studioFrame .urlRow input,.studioFrame .sourceEditor{background:#f8faff;border-color:#dfe7f1}
+.studioFrame .urlRow input{width:100%;min-width:0;font-size:12px}.studioFrame .urlRow{grid-template-columns:26px minmax(0,1fr) 62px}.studioFrame .fieldLabel{font-size:12px;color:#294465}
+.studioFrame .linkTools{display:flex;align-items:center;gap:16px;justify-content:space-between;margin-top:12px}.linkTools>span{font-size:10px;color:var(--muted)}.studioFrame .linkTools button{padding:7px 11px;font-size:11px;white-space:nowrap;background:#f5f9ff}
+.studioFrame .requirementsEditor{min-height:104px;font-size:12px;line-height:1.8}.studioFrame .requirementsMeta{font-size:10px;line-height:1.8}
+.studioFrame .scheduleAnchor{margin-top:22px;padding-top:20px}.studioFrame .anchorSectionHead b{font-size:14px}.studioFrame .anchorSectionHead span{font-size:11px}.studioFrame .anchorSectionHead em{font-size:10px}
+.studioFrame .scheduleAnchor .anchorCard{min-height:132px;border-radius:12px}.studioFrame .scheduleAnchor .anchorCard img{width:96px;height:132px;object-fit:cover;object-position:50% 25%}.studioFrame .scheduleAnchor .anchorCard h3{font-size:17px}.studioFrame .scheduleAnchor .anchorCard p{font-size:11px}
+.studioFrame .primary{background:linear-gradient(180deg,#2580fb,#1765df);border-color:#1a69e3;box-shadow:0 4px 12px #176cf01a;font-size:12px;padding:12px 18px}.studioFrame .secondary{font-size:12px}.studioFrame .actionBar p{font-size:11px;line-height:1.7}
+.studioFrame .libraryPage{max-width:1244px;padding:32px}.studioFrame .libraryHeader h1{font-size:24px}.studioFrame .libraryHeader p{font-size:12px}.studioFrame .libraryTabs{gap:8px}.studioFrame .libraryCard{box-shadow:var(--shadow);border-color:var(--line);border-radius:14px}.studioFrame .libraryHint{background:#e7eff9;color:#526a86}
+.studioFrame :is(a,button,input,textarea,select):focus-visible{outline:2px solid #2689ff;outline-offset:3px}
+.studioFrame .scheduleAnchor .anchorCard{grid-template-columns:96px minmax(0,1fr)}
+@media(min-width:1500px){.studioFrame .shell{margin-top:8px}.studioFrame .workspace{padding:32px 38px}}
+@media(max-width:1100px){.studioNav{width:180px;padding:26px 12px}.studioContent{margin-left:180px}.studioBrand{font-size:15px;gap:8px}.studioBrand small{font-size:6px}.studioFrame .shell{width:calc(100% - 36px)}.studioFrame .topbar{padding:0 18px}.studioFrame .workspace{padding:24px}.studioFrame .step{padding:9px}.studioFrame .step b{font-size:11px}}
+@media(max-width:760px){.studioFrame{display:block}.studioNav{position:relative;width:100%;padding:14px 18px;background:#091d39}.studioContent{margin-left:0}.studioBrand{margin:0 0 14px}.studioBrand small{font-size:7px}.studioBrand>span{width:30px;height:32px;border-radius:8px}.navGroupLabel,.navFoot{display:none}.studioNav nav{display:flex;gap:3px;overflow:auto}.studioNav nav a{padding:8px 10px;white-space:nowrap;font-size:11px;gap:6px}.studioNav nav a>span{font-size:14px;width:16px}.studioNav nav a small{display:none}.studioFrame .topbar{position:relative;height:62px}.studioFrame .shell{width:calc(100% - 24px)}.studioFrame .archiveBar{gap:8px;padding:12px 0}.studioFrame .steps{gap:2px;padding:5px}.studioFrame .step{padding:8px 2px;gap:5px;justify-content:center}.studioFrame .step b{font-size:10px}.studioFrame .step span{width:20px;height:20px}.studioFrame .workspace{padding:20px 16px}.studioFrame .sectionHead h2{font-size:21px}.studioFrame .linkTools{align-items:flex-start;flex-direction:column;gap:8px}.studioFrame .linkTools button{width:auto}.studioFrame .urlRow{grid-template-columns:22px minmax(0,1fr)}.studioFrame .urlRow i{display:none}.studioFrame .anchorGrid{grid-template-columns:1fr}.studioFrame .libraryPage{padding:24px 16px}.studioFrame .libraryHeader{align-items:flex-start}.studioFrame .libraryHeader .primary{width:auto;white-space:nowrap}.studioFrame .libraryGrid{grid-template-columns:minmax(0,1fr)}.studioFrame .libraryTabs button{width:auto}}

@@ -6,7 +6,7 @@ function apiKey() {
   return value;
 }
 
-function providerHeaders() {
+function providerHeaders(): Record<string, string> {
   const direct = new URL(HEYGEN_API_BASE).hostname === "api.heygen.com";
   return direct ? { "X-Api-Key": apiKey() } : { Authorization: `Bearer ${apiKey()}` };
 }

@@ -12,6 +12,10 @@ export async function POST(request: Request) {
     if (!validUrls.length && legacySourceText.length < 80) {
       return Response.json({ error: "请至少填写 1 条有效新闻链接" }, { status: 400 });
     }
+    // Resolve once per task so switching SOP during generation never changes its rule snapshot.
+    const sopResponse = await fetch(`http://127.0.0.1:${process.env.MEDIA_SERVICE_PORT || 3101}/library/sops`, { cache: "no-store" });
+    if (!sopResponse.ok) throw new Error("无法读取当前 SOP，请检查素材库服务后再写稿");
+    const { active: sopDocument } = await sopResponse.json();
     const linkedArticles = validUrls.length ? await readNewsLinks(validUrls) : [];
     const combinedSource = [
       ...linkedArticles.map((article) => article.sourceText),
@@ -29,6 +33,7 @@ export async function POST(request: Request) {
       airDate: `今天是${airDate}`,
       farewell: weekday === "星期五" ? "下周再見" : "明天再見",
       writingRequirements,
+      sopDocument,
     });
     return Response.json({
       ...result,
