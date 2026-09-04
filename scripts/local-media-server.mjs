@@ -1,18 +1,38 @@
 import http from "node:http";
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { access, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createRequire } from "node:module";
+import { loadEnvFile } from "node:process";
 import { handleLibrary, serveFile } from "./studio-library-http.mjs";
 
 const require = createRequire(import.meta.url);
 const ffmpegPath = require("ffmpeg-static");
 const root = process.cwd();
+try { loadEnvFile(path.join(root, ".env.local")); } catch (error) { if (error?.code !== "ENOENT") throw error; }
 const audioRoot = path.join(root, ".audio-slices");
 const compositionRoot = path.join(root, ".composition-jobs");
 const avatarOutputRoot = path.join(root, "outputs", "heygen-female-demo");
 const port = Number(process.env.MEDIA_SERVICE_PORT || 3101);
+const apiSettingNames = ["OPENIAPI_BASE_URL", "OPENIAPI_API_KEY", "LLM_MODEL", "TTS_MODEL", "HEYGEN_API_KEY", "HEYGEN_API_BASE_URL", "HEYGEN_RESOLUTION"];
+const secretSettingNames = new Set(["OPENIAPI_API_KEY", "HEYGEN_API_KEY"]);
+
+function publicApiSettings() {
+  return Object.fromEntries(apiSettingNames.map((name) => [name, secretSettingNames.has(name)
+    ? { configured: Boolean(process.env[name]?.trim()) }
+    : { value: process.env[name] || "" }]));
+}
+
+function updateEnvFile(source, updates) {
+  let result = source;
+  for (const [name, value] of Object.entries(updates)) {
+    const line = `${name}=${JSON.stringify(value.replace(/[\r\n]+/g, "").trim())}`;
+    const pattern = new RegExp(`^${name}=.*$`, "m");
+    result = pattern.test(result) ? result.replace(pattern, line) : `${result.trimEnd()}\n${line}\n`;
+  }
+  return result;
+}
 
 function cors(headers = {}) {
   return { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET,HEAD,POST,OPTIONS", "Access-Control-Allow-Headers": "Content-Type,X-File-Name,Range", ...headers };
@@ -59,6 +79,27 @@ async function handle(request, response) {
   if (request.headers.origin && !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(request.headers.origin)) { json(response,403,{error:"不允许此来源访问本地素材服务"}); return; }
   if (request.method === "OPTIONS") { response.writeHead(204, cors()); response.end(); return; }
   if (request.method === "GET" && url.pathname === "/health") { json(response, 200, { ready: true, ffmpeg: Boolean(ffmpegPath) }); return; }
+  if (request.method === "GET" && url.pathname === "/settings/apis") {
+    json(response, 200, { localOnly: true, settings: publicApiSettings() }); return;
+  }
+  if (request.method === "POST" && url.pathname === "/settings/apis") {
+    const incoming = await jsonBody(request);
+    const updates = {};
+    for (const name of apiSettingNames) {
+      if (typeof incoming[name] !== "string") continue;
+      const value = incoming[name].trim();
+      if (secretSettingNames.has(name) && !value) continue;
+      updates[name] = value.slice(0, name.includes("KEY") ? 1000 : 300);
+    }
+    if (!Object.keys(updates).length) { json(response, 400, { error: "没有需要保存的配置" }); return; }
+    const envPath = path.join(root, ".env.local");
+    const source = await readFile(envPath, "utf8").catch(() => "");
+    const temporary = `${envPath}.tmp`;
+    await writeFile(temporary, updateEnvFile(source, updates), { encoding: "utf8", mode: 0o600 });
+    await rename(temporary, envPath);
+    for (const [name, value] of Object.entries(updates)) process.env[name] = value;
+    json(response, 200, { saved: true, settings: publicApiSettings() }); return;
+  }
   if (await handleLibrary(request,response,url,{json,jsonBody,bodyBuffer,cors})) return;
 
   if (request.method === "POST" && url.pathname === "/audio/store") {
