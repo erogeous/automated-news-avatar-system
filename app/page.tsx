@@ -120,10 +120,11 @@ export default function Home() {
   const [avatarSliceJobs, setAvatarSliceJobs] = useState<AvatarSliceJob[]>([]);
   const [packagingAssetIds, setPackagingAssetIds] = useState<PackagingAssetId[]>(["background", "logo", "nameplate"]);
   const [manuscript, setManuscript] = useState("");
+  const [cantoneseScript, setCantoneseScript] = useState("");
   const [sopSnapshot, setSopSnapshot] = useState<null | {id:string; version:string; text:string; name:string}>(null);
   const [mediaDownloads, setMediaDownloads] = useState<Record<string, {id:string; status:string; progress:number; error?:string}>>({});
   const [downloadError, setDownloadError] = useState("");
-  const archive = useProjectArchive({step, urls, script, voiceReady, videoReady, avatarJobId, avatarStatus, avatarProgress, videoUrl, compositionJobId, compositionStatus, compositionProgress, compositionUrl, projectName, anchorId, writingRequirements, scriptModel, scriptSop, newsArticles, newsMedia, selectedMediaIds, sceneSettings, outputLayout, chromaSimilarity, chromaBlend, avatarX, avatarY, avatarHeight, sceneX, sceneY, sceneWidth, voiceDuration, audioSlices, audioSliceJobId, selectedSliceIds, avatarSliceJobs, packagingAssetIds, manuscript, sopSnapshot, mediaDownloads}, (saved) => {
+  const archive = useProjectArchive({step, urls, script, voiceReady, videoReady, avatarJobId, avatarStatus, avatarProgress, videoUrl, compositionJobId, compositionStatus, compositionProgress, compositionUrl, projectName, anchorId, writingRequirements, scriptModel, scriptSop, newsArticles, newsMedia, selectedMediaIds, sceneSettings, outputLayout, chromaSimilarity, chromaBlend, avatarX, avatarY, avatarHeight, sceneX, sceneY, sceneWidth, voiceDuration, audioSlices, audioSliceJobId, selectedSliceIds, avatarSliceJobs, packagingAssetIds, manuscript, cantoneseScript, sopSnapshot, mediaDownloads}, (saved) => {
     setStep(saved.step ?? step);
     setUrls(saved.urls ?? urls);
     setScript(saved.script ?? script);
@@ -162,6 +163,7 @@ export default function Home() {
     setAvatarSliceJobs(saved.avatarSliceJobs ?? avatarSliceJobs);
     setPackagingAssetIds(saved.packagingAssetIds ?? packagingAssetIds);
     setManuscript(saved.manuscript ?? manuscript);
+    setCantoneseScript(saved.cantoneseScript ?? "");
     setSopSnapshot(saved.sopSnapshot ?? sopSnapshot);
     setMediaDownloads(saved.mediaDownloads ?? mediaDownloads);
     setAudioUrl(saved.audioSliceJobId ? `${MEDIA_SERVICE_URL}/audio/${saved.audioSliceJobId}/source.mp3` : "");
@@ -411,6 +413,7 @@ export default function Home() {
       if (!response.ok) throw new Error(data.error || "口播稿生成失败");
       setScript(data.content);
       setManuscript(data.content);
+      setCantoneseScript("");
       setSopSnapshot(data.sopSnapshot || null);
       setMediaDownloads({});
       setAudioUrl(""); setAudioSliceJobId(""); setAudioSlices([]); setSelectedSliceIds([]);
@@ -443,12 +446,13 @@ export default function Home() {
       });
       const conversion = await conversionResponse.json();
       if (!conversionResponse.ok) throw new Error(conversion.error || "粵語口播轉寫失敗");
-      const cantoneseScript = conversion.content as string;
-      setScript(cantoneseScript);
+      const convertedScript = conversion.content as string;
+      if (!conversion.validation?.factsPreserved) throw new Error("粤语转换未通过事实一致性检查，尚未开始配音");
+      setCantoneseScript(convertedScript);
       const response = await fetch("/api/voice/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: cantoneseScript, voiceId, speed: 1 }),
+        body: JSON.stringify({ text: convertedScript, voiceId, speed: 1 }),
       });
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
@@ -788,6 +792,7 @@ export default function Home() {
             <div className="audioCard realAudio">
               {audioUrl ? <audio controls src={audioUrl} aria-label="完整粤语配音" /> : <p>尚未生成完整配音</p>}
             </div>
+            {cantoneseScript && <details className="cantoneseTranscript"><summary>查看本次自动转换的粤语口播文本</summary><p>系统已自动核对数字、日期、金额和英文缩写；繁体母稿仍单独保留，不会被覆盖。</p><textarea value={cantoneseScript} readOnly aria-label="粤语口播文本" /></details>}
             <div className="voiceIdentity"><img src={selectedAnchor.portrait} alt={selectedAnchor.name} /><div><span>本期主播</span><b>{selectedAnchor.name}</b><small>{selectedAnchor.role} · {selectedAnchor.voiceName}</small></div></div>
             <div className="summaryCard"><div><span>音色绑定</span><b>{selectedAnchor.voiceName}</b></div><div><span>语言</span><b>粤语</b></div><div><span>模型</span><b>speech-2.8-hd</b></div><div><span>完整时长</span><b>{voiceDuration ? `${Math.floor(voiceDuration / 60000)}分${Math.round((voiceDuration % 60000) / 1000)}秒` : "—"}</b></div></div>
             <div className="notice"><span>i</span><p>这是整篇稿件的正式粤语配音。可按时间轴选择主播需要出镜的片段，再交给 HeyGen 生成；不会重新消耗配音额度。</p></div>

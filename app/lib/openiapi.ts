@@ -38,6 +38,25 @@ function normalizeShortPauses(content: string) {
     .trim();
 }
 
+function protectedFacts(content: string) {
+  const plain = content.replace(/<#\s*\d+(?:\.\d+)?\s*#>/g, "");
+  const matches = plain.match(/(?:HK\$|港幣|人民幣|美元|英鎊)?\s*\d[\d,]*(?:\.\d+)?(?:%|％|億港元|萬港元|億元|萬元|港元|元|人|宗|項|次|年|月|日|時|分|秒|公里|平方米)?|\b[A-Z][A-Z0-9.-]{1,}\b/g) || [];
+  return matches.map((value) => value.replace(/[\s,]/g, "").replace(/％/g, "%"));
+}
+
+function assertFactsPreserved(source: string, converted: string) {
+  const remaining = protectedFacts(converted);
+  const missing: string[] = [];
+  for (const fact of protectedFacts(source)) {
+    const index = remaining.indexOf(fact);
+    if (index >= 0) remaining.splice(index, 1);
+    else missing.push(fact);
+  }
+  if (missing.length) {
+    throw new Error(`粤语转换未通过事实一致性检查（缺少：${[...new Set(missing)].slice(0, 5).join("、")}），尚未开始配音，请重试或检查母稿`);
+  }
+}
+
 function config() {
   const baseUrl = process.env.OPENIAPI_BASE_URL?.replace(/\/+$/, "");
   const apiKey = process.env.OPENIAPI_API_KEY;
@@ -234,5 +253,6 @@ export async function convertApprovedScriptToCantonese(input: {
   const rawContent = payload.choices?.[0]?.message?.content;
   const content = rawContent ? normalizeShortPauses(cleanScriptOutput(rawContent)) : "";
   if (!response.ok || !content) throw new Error(payload.error?.message || `粵語轉寫模型返回 ${response.status}`);
-  return { content, model, sop: NEWS_SCRIPT_SOP };
+  assertFactsPreserved(script, content);
+  return { content, model, sop: NEWS_SCRIPT_SOP, validation: { factsPreserved: true } };
 }
