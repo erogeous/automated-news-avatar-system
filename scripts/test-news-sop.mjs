@@ -3,8 +3,10 @@ import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 import ts from "typescript";
+import { createRequire } from "node:module";
 
 const root = process.cwd();
+const nativeRequire = createRequire(import.meta.url);
 const requests = [];
 const cache = new Map();
 function load(file) {
@@ -16,7 +18,7 @@ function load(file) {
   }).outputText;
   vm.runInNewContext(code, {
     module, exports: module.exports,
-    require: (name) => load(path.resolve(path.dirname(file), name.endsWith(".json") ? name : name + ".ts")),
+    require: (name) => name.startsWith("node:") ? nativeRequire(name) : load(path.resolve(path.dirname(file), name.endsWith(".json") ? name : name + ".ts")),
     process: { env: { OPENIAPI_BASE_URL: "https://test.invalid/v1", OPENIAPI_API_KEY: "test-only" } },
     AbortController, setTimeout, clearTimeout,
     fetch: async (_url, options) => {
@@ -28,20 +30,23 @@ function load(file) {
   return module.exports;
 }
 const sop = load(path.join(root, "app/lib/news-script-sop.ts"));
-const original = load(path.join(root, "app/lib/news-script-sop-v4-3.json"));
-assert.equal(sop.NEWS_SCRIPT_SOP.version, "V4.3");
+const original = load(path.join(root, "app/lib/news-script-sop-v4-7.json"));
+assert.equal(sop.NEWS_SCRIPT_SOP.version, "V4.7");
 assert.ok(sop.NEWS_SCRIPT_SOP_PROMPT.includes(original.text));
-assert.ok(original.text.includes("十、交稿前20問"));
-assert.ok(original.text.includes("十二、文件命名規則"));
+assert.ok(original.text.includes("43｜交稿前最終 25 問"));
+assert.ok(original.text.includes("46｜10篇客戶人工稿：統一字數樣本庫"));
+assert.ok(original.text.includes("常規母稿目標：1,200—1,350字符"));
+assert.ok(original.text.includes("41｜文件命名"));
 const provider = load(path.join(root, "app/lib/openiapi.ts"));
 for (let i = 0; i < 2; i++) {
   const result = await provider.generateCantoneseNewsScript("這是本期核實後的新聞材料。".repeat(20), {
     anchorName: "林嘉晴", writingRequirements: "本期主稿優先，副題簡短。",
   });
-  assert.equal(result.sop.version, "V4.3");
+  assert.equal(result.sop.version, "V4.7");
   const system = requests[i].messages[0].content;
   assert.ok(system.includes(original.text), "Every request must contain the complete SOP");
-  assert.ok(system.indexOf("本期主稿優先") < system.indexOf("【SOP V4.3 完整原文】"));
+  assert.ok(system.indexOf("本期主稿優先") < system.indexOf("【SOP V4.7 完整原文】"));
+  assert.ok(system.includes("原文中V4.6案例或舊檢查表殘留的1300—1400只作歷史記錄"));
   assert.ok(system.includes("不是本期新聞事實"));
   assert.ok(!system.includes("外部知识、推测、评价"));
 }
@@ -49,11 +54,11 @@ await provider.convertApprovedScriptToCantonese({
   script: "各位好，今天的新聞內容已由編輯確認。".repeat(10),
   anchorName: "林嘉晴", airDate: "2026年9月3日星期四", farewell: "明天再見",
 });
-assert.ok(requests[2].messages[0].content.includes("不得新增、刪減、重排"));
+assert.ok(requests[2].messages[0].content.includes("不得新增、刪減、合併、重排"));
 const custom={id:"test",name:"测试规则",version:"V9.1",text:"规则全文：每条新闻都要核对来源，不可使用示例作为事实。"};
 const customResult=await provider.generateCantoneseNewsScript("已核实的新闻资料。".repeat(20),{sopDocument:custom});
 assert.ok(requests[3].messages[0].content.includes(custom.text));
 assert.ok(!requests[3].messages[0].content.includes(original.text));
 assert.equal(customResult.sop.version,"V9.1");
 assert.equal(customResult.sopSnapshot.text,custom.text);
-console.log("PASS: full V4.3 per request, human priority, example isolation, unchanged approval/conversion boundary. No external model calls.");
+console.log("PASS: full V4.7 per request, new calibrated length range, human priority, example isolation, unchanged approval/conversion boundary. No external model calls.");

@@ -1,9 +1,10 @@
-import { generateCantoneseNewsScript } from "../../../lib/openiapi";
+import { getCreatorProfile } from "../../../lib/creator-provider";
+import { generateCantoneseNewsScript, generateCreatorScript } from "../../../lib/openiapi";
 import { readNewsLinks } from "../../../lib/news-source";
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as { writingRequirements?: unknown; sourceText?: unknown; urls?: unknown; anchorName?: unknown };
+    const body = (await request.json()) as { mode?: unknown; template?: unknown; duration?: unknown; writingRequirements?: unknown; sourceText?: unknown; urls?: unknown; anchorName?: unknown };
     const writingRequirements = typeof body.writingRequirements === "string" ? body.writingRequirements.trim().slice(0, 2000) : "";
     const legacySourceText = typeof body.sourceText === "string" ? body.sourceText.trim() : "";
     const validUrls = Array.isArray(body.urls)
@@ -11,6 +12,15 @@ export async function POST(request: Request) {
       : [];
     if (!validUrls.length && legacySourceText.length < 80) {
       return Response.json({ error: "请至少填写 1 条有效新闻链接" }, { status: 400 });
+    }
+    if (body.mode === "creator") {
+      if (legacySourceText.length < 80) return Response.json({ error: "请先读取并确认来源正文" }, { status: 400 });
+      const profile = await getCreatorProfile();
+      return Response.json(await generateCreatorScript(legacySourceText, {
+        style: profile.style, writingRequirements,
+        template: typeof body.template === "string" ? body.template : "explain",
+        duration: typeof body.duration === "number" ? body.duration : 90,
+      }), { headers: { "Cache-Control": "no-store" } });
     }
     // Resolve once per task so switching SOP during generation never changes its rule snapshot.
     const sopResponse = await fetch(`http://127.0.0.1:${process.env.MEDIA_SERVICE_PORT || 3101}/library/sops`, { cache: "no-store" });

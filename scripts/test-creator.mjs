@@ -1,0 +1,82 @@
+import assert from 'node:assert/strict';
+import { mkdtemp, readFile } from 'node:fs/promises';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import vm from 'node:vm';
+import { createRequire } from 'node:module';
+import ts from 'typescript';
+import { NEWS_SOURCES, parseSource, groupItems } from './hotspots.mjs';
+import { validateCreatorComposition, parseSrt, creatorAss } from './creator-composition.mjs';
+assert.equal(NEWS_SOURCES.filter(s=>s.region==='国外').length,3);
+assert.equal(NEWS_SOURCES.filter(s=>s.region==='国内').length,6);
+const feed='<rss><channel><item><title><![CDATA[AI model &amp; tools launch today]]></title><link>https://techcrunch.com/2026/10/01/ai/?utm_source=rss</link><pubDate>Thu, 01 Oct 2026 09:00:00 GMT</pubDate></item><item><title>Invalid remote link should be removed</title><link>http://127.0.0.1/private</link></item></channel></rss>';
+const items=parseSource(feed,NEWS_SOURCES[0]);assert.equal(items.length,1);assert.equal(items[0].title,'AI model & tools launch today');assert.equal(items[0].url,'https://techcrunch.com/2026/10/01/ai/');
+const atom='<feed><entry><title>New AI product available today</title><link rel="self" href="https://www.theverge.com/self"/><link rel="alternate" href="https://www.theverge.com/story"/><updated>2026-10-01T08:00:00Z</updated></entry></feed>';
+assert.equal(parseSource(atom,NEWS_SOURCES[1])[0].url,'https://www.theverge.com/story');
+const html='<a href="//news.cctv.com/2026/10/01/ARTI123.shtml">一项与居民生活相关的新政策正式实施</a><a href="/index.html">首页导航入口链接</a>';
+assert.equal(parseSource(html,NEWS_SOURCES[6]).length,1);
+const grouped=groupItems([...items,{...items[0],sourceId:'other',url:'https://example.com/duplicate'}],Date.parse('2026-10-01T10:00:00Z'));
+assert.equal(grouped.length,1);assert.equal(grouped[0].links.length,2);
+assert.equal(groupItems(items,Date.parse('2026-10-20T10:00:00Z')).length,0);
+const many=Array.from({length:130},(_,i)=>({id:String(i),title:`Topic ${i} unique${i} subject${i}`,url:`https://example.com/${i}`,sourceId:'test',category:i<110?'tech':'society',publishedAt:null}));
+assert.equal(groupItems(many).filter(i=>i.category==='society').length,20);
+const srt='1\n00:00:00,000 --> 00:00:02,000\n这是字幕\n\n2\n00:00:02,000 --> 00:00:04,000\n第二句话\n';
+const base={mode:'creator',layout:'portrait',audioDuration:4,avatarSegments:[{start:0,end:4}],scenes:[],subtitles:srt,title:'AI 更新'};
+validateCreatorComposition(base);assert.equal(parseSrt(srt,4).length,2);
+assert.throws(()=>validateCreatorComposition({...base,avatarSegments:[{start:1,end:4}]}),/缺少画面/);
+assert.throws(()=>validateCreatorComposition({...base,scenes:[{type:'image',start:3,duration:2}]}),/超出/);
+assert.throws(()=>parseSrt(srt.replace('00:00:02,000 -->','00:00:01,000 -->'),4),/重叠/);
+assert.match(creatorAss(base),/PlayResX: 1080/);assert.match(creatorAss(base),/Caption/);
+assert.doesNotMatch(creatorAss({...base,title:'{\\pos(0,0)}'}),/\{\\pos/);
+process.env.STUDIO_LIBRARY_DIR=await mkdtemp(path.join(os.tmpdir(),'creator-test-'));
+const lib=await import('./studio-library.mjs');const profile=await import('./creator-profile.mjs');
+assert.equal((await profile.getCreatorProfile()).voiceId,'');
+await assert.rejects(profile.saveCreatorProfile({name:'我',voiceId:'../../secret'}),/音色/);
+await assert.rejects(profile.saveCreatorProfile({name:'我',portrait:'https://example.com/a.jpg'}),/上传/);
+const saved=await profile.saveCreatorProfile({name:'我',voiceId:'my_voice_001',style:'简洁',speed:1});
+assert.equal((await profile.getCreatorProfile()).voiceId,saved.voiceId);
+const id=lib.newId();const snapshot={projectType:'creator',projectName:'个人内容',urls:[],script:'稿件',articles:[{text:'原文'}],sourcesConfirmed:true,profileSnapshot:saved,subtitles:srt,scenes:[],audioSliceJobId:''};
+await lib.saveProject({id,expectedRevision:0,snapshot});
+const record=await lib.readJson(path.join(lib.libraryRoot,'projects',id,'record.json'));
+assert.equal(record.snapshot.projectType,'creator');assert.equal(record.snapshot.subtitles,srt);assert.equal(record.snapshot.articles[0].text,'原文');
+await assert.rejects(lib.saveProject({id,expectedRevision:0,snapshot}),/其他页面/);
+
+// Provider tests run with fake credentials and in-memory HTTP responses only.
+let nextPayload={};const requests=[];const cache=new Map();const nativeRequire=createRequire(import.meta.url);
+function load(file) {
+ if(file.endsWith('.json'))return JSON.parse(fs.readFileSync(file,'utf8'));
+ if(cache.has(file))return cache.get(file);
+ const module={exports:{}};cache.set(file,module.exports);
+ const code=ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS,esModuleInterop:true}}).outputText;
+ vm.runInNewContext(code,{module,exports:module.exports,require:name=>name.startsWith('node:')?nativeRequire(name):load(path.resolve(path.dirname(file),name.endsWith('.json')?name:name+'.ts')),process:{env:{OPENIAPI_BASE_URL:'https://provider.test/v1',OPENIAPI_API_KEY:'test-only'}},AbortController,setTimeout,clearTimeout,Uint8Array,fetch:async(url,options)=>{requests.push({url,body:JSON.parse(options.body)});return {ok:true,status:200,json:async()=>nextPayload};}},{filename:file});return module.exports;
+}
+const provider=load(path.resolve('app/lib/openiapi.ts'));
+nextPayload={base_resp:{status_code:0},data:{audio:'01020304'},extra_info:{audio_length:4000}};
+await provider.synthesizeCantoneseSpeech({text:'测试普通话配音',voiceId:'my_voice_001',language:'mandarin'});
+assert.equal(requests.at(-1).body.language_boost,'Chinese');assert.equal(requests.at(-1).body.voice_setting.voice_id,'my_voice_001');
+await provider.synthesizeCantoneseSpeech({text:'測試粵語配音',voiceId:'male-qn-qingse'});assert.equal(requests.at(-1).body.language_boost,'Chinese,Yue');
+const text='这次 AI 更新给普通人带来了什么变化？'.repeat(12);
+nextPayload={choices:[{finish_reason:'stop',message:{content:text}}]};
+assert.equal((await provider.generateCreatorScript('已确认的来源内容'.repeat(30),{style:'我的风格',writingRequirements:'讲实际影响',template:'explain',duration:60})).content,text);
+assert.equal(requests.at(-1).url,'https://provider.test/v1/chat/completions');assert.match(requests.at(-1).body.messages[0].content,/我的风格/);assert.doesNotMatch(requests.at(-1).body.messages[0].content,/國泰航空|點觀香港/);
+nextPayload={choices:[{finish_reason:'length',message:{content:text}}]};await assert.rejects(()=>provider.generateCreatorScript('材料',{style:'',writingRequirements:'',template:'news',duration:60}),/未完整/);
+const opening='各位好，今天是2026年9月9日星期三，歡迎收看由國泰航空特約呈現的《點觀香港》，我是數字人主播梁正言。今天我們先來關注本期新聞。';
+const closing='以上就是今天《點觀香港》的全部內容，本節目由國泰航空特約呈現，更多新聞請關注點新聞網和點新聞APP，我們明天再見！';
+nextPayload={choices:[{finish_reason:'stop',message:{content:opening+'\n新聞內容\n'+closing}}]};
+assert.match((await provider.generateCantoneseNewsScript('新聞'.repeat(100),{airDate:'今天是2026年9月9日星期三',anchorName:'梁正言',farewell:'明天再見'})).content,/點觀香港/);
+console.log('PASS: 9 sources, RSS/Atom/HTML parsing, dedupe/date, profile, versioned archives, timeline coverage, captions, shared provider, Mandarin + Cantonese compatibility. No external model calls.');
+
+// Extract only publisher body and preserve paragraphs; redirects/DNS are handled by safeBytes.
+const articleModule={exports:{}};
+let articleHtml='<html><nav>导航菜单'.repeat(1)+'</nav><div id="paragraph"><p>'+('这是已核实的新闻正文。'.repeat(15))+'</p><div><p>第二段详细内容应当被保留。</p></div></div><footer>不应该混入的推荐广告</footer></html>';
+const articleCode=ts.transpileModule(fs.readFileSync('app/lib/news-source.ts','utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText;
+vm.runInNewContext(articleCode,{module:articleModule,exports:articleModule.exports,URL,TextDecoder,require:()=>({safeBytes:async()=>({bytes:Buffer.from(articleHtml),type:'text/html; charset=utf-8',url:'https://example.com/story'})})});
+const article=(await articleModule.exports.readNewsLinks(['https://example.com/story']))[0];
+assert.match(article.text,/第二段详细内容/);assert.doesNotMatch(article.text,/推荐广告|导航菜单/);assert.match(article.text,/\n/);
+console.log('PASS: article container extraction and paragraph preservation.');
+
+assert.ok((await articleModule.exports.readNewsLinks(['https://example.com/story'],true))[0].text.length>=120);
+articleHtml='<html><h1>图片新闻</h1><p>来源：新闻网站</p><footer>'+('网站导航与联系方式'.repeat(20))+'</footer></html>';
+await assert.rejects(()=>articleModule.exports.readNewsLinks(['https://example.com/gallery'],true),/没有足够的正文段落/);
+console.log('PASS: image-only/metadata pages cannot enter the personal writing pipeline.');

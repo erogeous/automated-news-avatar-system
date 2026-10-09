@@ -1,10 +1,25 @@
 const HEYGEN_ORIGIN = "https://api.heygen.com";
+const HEYGEN_UPLOAD_ORIGIN = "https://upload.heygen.com";
 
 const allowedPaths = [
   /^\/v3\/users\/me$/,
   /^\/v3\/videos$/,
   /^\/v3\/videos\/[A-Za-z0-9_-]{6,160}$/,
+  /^\/v1\/asset$/,
 ];
+
+export const config = { api: { bodyParser: false } };
+
+async function rawBody(request, limit = 50 * 1024 * 1024) {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of request) {
+    size += chunk.length;
+    if (size > limit) throw Object.assign(new Error("Asset exceeds 50MB gateway limit"), { status: 413 });
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
 
 function send(response, status, value) {
   response.setHeader("Cache-Control", "no-store");
@@ -24,13 +39,15 @@ export default async function handler(request, response) {
   if (!(["GET", "POST"].includes(request.method))) return send(response, 405, { error: "Method not allowed" });
 
   try {
-    const headers = { "X-Api-Key": apiKey, "Content-Type": "application/json" };
+    const isAssetUpload = path === "/v1/asset";
+    const headers = { "X-Api-Key": apiKey, "Content-Type": isAssetUpload ? (request.headers["content-type"] || "application/octet-stream") : "application/json" };
     const idempotencyKey = request.headers["idempotency-key"];
     if (typeof idempotencyKey === "string") headers["Idempotency-Key"] = idempotencyKey;
-    const upstream = await fetch(`${HEYGEN_ORIGIN}${path}`, {
+    const body = request.method === "POST" ? await rawBody(request) : undefined;
+    const upstream = await fetch(`${isAssetUpload ? HEYGEN_UPLOAD_ORIGIN : HEYGEN_ORIGIN}${path}`, {
       method: request.method,
       headers,
-      body: request.method === "POST" ? JSON.stringify(request.body ?? {}) : undefined,
+      body,
     });
     const text = await upstream.text();
     response.status(upstream.status);
@@ -38,6 +55,6 @@ export default async function handler(request, response) {
     response.setHeader("Cache-Control", "no-store");
     return response.send(text);
   } catch (error) {
-    return send(response, 502, { error: error instanceof Error ? error.message : "HeyGen upstream request failed" });
+    return send(response, Number(error?.status) || 502, { error: error instanceof Error ? error.message : "HeyGen upstream request failed" });
   }
 }

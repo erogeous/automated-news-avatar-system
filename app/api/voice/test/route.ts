@@ -1,21 +1,24 @@
+import { creatorVoice } from "../../../lib/creator-provider";
 import { synthesizeCantoneseSpeech } from "../../../lib/openiapi";
 
 const ALLOWED_VOICES = new Set(["male-qn-qingse", "female-shaonv"]);
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as { text?: unknown; voiceId?: unknown; speed?: unknown };
+    const body = (await request.json()) as { mode?: unknown; text?: unknown; voiceId?: unknown; speed?: unknown };
     if (typeof body.text !== "string" || body.text.trim().length < 5) {
       return Response.json({ error: "请提供至少 5 个字的试听文本" }, { status: 400 });
     }
-    if (typeof body.voiceId !== "string" || !ALLOWED_VOICES.has(body.voiceId)) {
+    const profile = body.mode === "creator" ? await creatorVoice(body.voiceId) : null;
+    if (!profile && (typeof body.voiceId !== "string" || !ALLOWED_VOICES.has(body.voiceId))) {
       return Response.json({ error: "不支持所选音色" }, { status: 400 });
     }
 
     const result = await synthesizeCantoneseSpeech({
       text: body.text,
-      voiceId: body.voiceId,
-      speed: typeof body.speed === "number" ? body.speed : 1,
+      voiceId: profile?.voiceId || String(body.voiceId),
+      language: profile ? "mandarin" : "cantonese",
+      speed: profile?.speed ?? (typeof body.speed === "number" ? body.speed : undefined),
     });
     return new Response(result.audio, {
       headers: {
@@ -24,6 +27,7 @@ export async function POST(request: Request) {
         "Cache-Control": "no-store",
         "X-Audio-Duration-Ms": String(result.durationMs),
         "X-Usage-Characters": String(result.characters),
+        "X-TTS-Model": result.model,
       },
     });
   } catch (error) {

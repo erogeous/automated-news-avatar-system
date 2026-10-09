@@ -71,14 +71,22 @@ export function parseSop(bytes, name) {
   return text;
 }
 
-export async function builtinSop() {
-  const source = await readJson(path.resolve("app/lib/news-script-sop-v4-3.json"));
-  return { id: "builtin-v4-3", name: source.source, version: "V4.3", text: source.text, createdAt: 0 };
+export async function builtinSop(id = "builtin-v4-7") {
+  if (id === "builtin-v4-3") {
+    const source = await readJson(path.resolve("app/lib/news-script-sop-v4-3.json"));
+    return { id, name: source.source, version: source.version, text: source.text, createdAt: 0 };
+  }
+  if (id === "builtin-v4-6") {
+    const source = await readJson(path.resolve("app/lib/news-script-sop-v4-6.json"));
+    return { id, name: source.source, version: source.version, text: source.text, createdAt: 0 };
+  }
+  const source = await readJson(path.resolve("app/lib/news-script-sop-v4-7.json"));
+  return { id: "builtin-v4-7", name: source.source, version: source.version, text: source.text, createdAt: 0 };
 }
 export async function activeSop() {
   try {
     const active = await readJson(path.join(libraryRoot, "sops", "active.json"));
-    if (active.id === "builtin-v4-3") return builtinSop();
+    if (["builtin-v4-3", "builtin-v4-6", "builtin-v4-7"].includes(active.id)) return builtinSop(active.id);
     if (!validId(active.id)) throw fail("启用的 SOP 编号无效", 500);
     return readJson(path.join(libraryRoot, "sops", active.id, "record.json"));
   } catch (error) {
@@ -88,7 +96,7 @@ export async function activeSop() {
   }
 }
 
-const snapshotKeys = ["step","urls","script","manuscript","projectName","anchorId","writingRequirements","scriptModel","scriptSop","sopSnapshot","newsArticles","newsMedia","selectedMediaIds","sceneSettings","outputLayout","chromaSimilarity","chromaBlend","avatarX","avatarY","avatarHeight","sceneX","sceneY","sceneWidth","voiceDuration","audioSlices","audioSliceJobId","selectedSliceIds","avatarSliceJobs","packagingAssetIds","avatarJobId","avatarStatus","avatarProgress","videoUrl","voiceReady","videoReady","compositionJobId","compositionStatus","compositionProgress","compositionUrl","mediaDownloads"];
+const snapshotKeys = ["projectType","articles","confirmedUrls","sourcesConfirmed","scriptConfirmed","template","targetDuration","scenes","profileSnapshot","subtitles","subtitlesConfirmed","step","urls","script","manuscript","cantoneseScript","cantoneseSopVersion","conversionMissingFacts","conversionConfirmed","projectName","anchorId","writingRequirements","scriptModel","scriptSop","sopSnapshot","newsArticles","newsMedia","selectedMediaIds","sceneSettings","outputLayout","chromaSimilarity","chromaBlend","avatarX","avatarY","avatarHeight","sceneX","sceneY","sceneWidth","voiceDuration","audioSlices","audioSliceJobId","selectedSliceIds","avatarMotionPrompt","avatarSliceJobs","packagingAssetIds","avatarJobId","avatarStatus","avatarProgress","videoUrl","voiceReady","videoReady","compositionJobId","compositionStatus","compositionProgress","compositionUrl","mediaDownloads"];
 export async function saveProject(body) {
   if (!validId(body.id)) throw fail("项目编号无效");
   if (!body.snapshot || typeof body.snapshot !== "object") throw fail("缺少项目内容");

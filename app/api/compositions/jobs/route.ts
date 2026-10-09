@@ -1,10 +1,13 @@
+import {projectMediaPath} from "../../../lib/project-paths";
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { access, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 export const runtime = "nodejs";
-const jobsRoot = path.join(process.cwd(), ".composition-jobs");
+const dataRoot = process.env.STUDIO_DATA_DIR ? path.resolve(process.env.STUDIO_DATA_DIR) : process.cwd();
+const jobsRoot = projectMediaPath("composition-jobs");
+const audioSlicesRoot = projectMediaPath("audio-slices");
 
 function validPublicUrl(value: unknown) {
   if (typeof value !== "string") return false;
@@ -21,7 +24,7 @@ export async function POST(request: Request) {
       avatarX?: unknown; avatarY?: unknown; avatarHeight?: unknown; sceneX?: unknown; sceneY?: unknown; sceneWidth?: unknown };
     const audioJobId = typeof body.audioJobId === "string" ? body.audioJobId : "";
     if (!/^[a-f0-9]{32}$/.test(audioJobId)) return Response.json({ error: "完整配音任务编号无效" }, { status: 400 });
-    await access(path.join(process.cwd(), ".audio-slices", audioJobId, "source.mp3"));
+    await access(path.join(audioSlicesRoot, audioJobId, "source.mp3"));
     if (!Array.isArray(body.avatarSegments) || !body.avatarSegments.length) return Response.json({ error: "请至少生成一个数字人片段" }, { status: 400 });
     const avatarSegments = body.avatarSegments.slice(0, 30).map((segment, index) => {
       const item = segment as Record<string, unknown>;
@@ -30,7 +33,7 @@ export async function POST(request: Request) {
       const end = Math.max(start + 0.1, Math.min(3600, Number(item.end) || start + 28));
       return { url: item.url, start, end, duration: end - start };
     });
-    if (!Array.isArray(body.scenes) || !body.scenes.length) return Response.json({ error: "请至少选择一个分镜素材" }, { status: 400 });
+    if (!Array.isArray(body.scenes)) return Response.json({ error: "分镜素材格式无效" }, { status: 400 });
     const scenes = body.scenes.slice(0, 30).map((scene, index) => {
       const item = scene as Record<string, unknown>;
       if (!validPublicUrl(item.url) || !["image", "video"].includes(String(item.type))) throw new Error(`第 ${index + 1} 个分镜素材无效`);
@@ -40,10 +43,10 @@ export async function POST(request: Request) {
     const jobDir = path.join(jobsRoot, id);
     await mkdir(jobDir, { recursive: true });
     const layout = body.layout === "landscape" ? "landscape" : "portrait";
-    const allowedPackagingAssets = new Set(["background", "logo", "nameplate"]);
+    const allowedPackagingAssets = new Set(["intro", "background", "logo", "nameplate"]);
     const packagingAssets = Array.isArray(body.packagingAssets)
       ? body.packagingAssets.filter((item): item is string => typeof item === "string" && allowedPackagingAssets.has(item))
-      : ["background", "logo", "nameplate"];
+      : ["intro", "background", "logo", "nameplate"];
     await writeFile(path.join(jobDir, "input.json"), JSON.stringify({ audioJobId,
       audioDuration: Math.max(1, Math.min(3600, Number(body.audioDuration) || 240)), avatarSegments,
       projectName: String(body.projectName || "新闻口播").slice(0, 80), scenes, layout,
@@ -52,8 +55,8 @@ export async function POST(request: Request) {
       chromaSimilarity: Math.max(0.05, Math.min(0.35, Number(body.chromaSimilarity) || 0.14)),
       chromaBlend: Math.max(0.01, Math.min(0.2, Number(body.chromaBlend) || 0.055)),
       avatarX: Math.max(-900, Math.min(1800, Number(body.avatarX) || 1280)),
-      avatarY: Math.max(-400, Math.min(900, Number(body.avatarY) || -40)),
-      avatarHeight: Math.max(420, Math.min(1400, Number(body.avatarHeight) || 1100)),
+      avatarY: Math.max(-400, Math.min(900, Number(body.avatarY) || 50)),
+      avatarHeight: Math.max(420, Math.min(1400, Number(body.avatarHeight) || 1040)),
       sceneX: Math.max(-100, Math.min(1500, Number(body.sceneX) || 80)),
       sceneY: Math.max(-100, Math.min(900, Number(body.sceneY) || 250)),
       sceneWidth: Math.max(360, Math.min(1400, Number(body.sceneWidth) || 820)) }, null, 2));

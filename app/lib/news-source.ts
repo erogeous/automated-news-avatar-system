@@ -1,3 +1,4 @@
+import { safeBytes } from "../../scripts/library-download.mjs";
 const MAX_LINKS = 10;
 const MAX_ARTICLE_CHARS = 18_000;
 const MAX_MEDIA_PER_ARTICLE = 30;
@@ -38,19 +39,46 @@ function decodeHtml(text: string) {
     if (entity[0] === "#") {
       const hex = entity[1]?.toLowerCase() === "x";
       const value = Number.parseInt(entity.slice(hex ? 2 : 1), hex ? 16 : 10);
-      return Number.isFinite(value) ? String.fromCodePoint(value) : " ";
+      return Number.isFinite(value) && value >= 0 && value <= 0x10ffff ? String.fromCodePoint(value) : " ";
     }
     return named[entity.toLowerCase()] ?? " ";
   }).replace(/\s+/g, " ").trim();
 }
 
+function articleBody(html: string) {
+  // Prefer publisher-defined body containers, retaining nested elements.
+  const candidates = [
+    /<(div|section)\b[^>]*(?:id=["'](?:paragraph|articleBody|article-content|content_area|Content|content)["']|class=["'][^"']*(?:article-content|post-content|entry-content|article__content|cnt_bd|left_zw)[^"']*["'])[^>]*>/gi,
+    /<(article)\b[^>]*>/gi,
+    /<(main)\b[^>]*>/gi,
+  ];
+  for (const pattern of candidates) {
+    for (const opening of html.matchAll(pattern)) {
+      const tag = opening[1];
+      const start = (opening.index || 0) + opening[0].length;
+      const rest = html.slice(start);
+      const tags = new RegExp(`<\\/?${tag}\\b[^>]*>`, "gi");
+      let depth = 1;
+      for (const token of rest.matchAll(tags)) {
+        depth += token[0].startsWith("</") ? -1 : token[0].endsWith("/>") ? 0 : 1;
+        if (depth === 0) {
+          const content = rest.slice(0, token.index);
+          if (content.replace(/<[^>]*>/g, "").trim().length >= 80) return content;
+          break;
+        }
+      }
+    }
+  }
+  return html;
+}
+
 function extractArticleText(html: string) {
-  const cleaned = html
+  const cleaned = articleBody(html)
     .replace(/<!--[\s\S]*?-->/g, " ")
     .replace(/<(script|style|noscript|svg|nav|footer|header|form|aside)\b[^>]*>[\s\S]*?<\/\1>/gi, " ")
     .replace(/<(br|\/p|\/div|\/article|\/section|\/li|\/h[1-6])\b[^>]*>/gi, "\n")
     .replace(/<[^>]+>/g, " ");
-  return decodeHtml(cleaned).split(/\n+/).map((line) => line.trim()).filter((line) => line.length >= 8).join("\n").slice(0, MAX_ARTICLE_CHARS);
+  return cleaned.split(/\n+/).map(decodeHtml).filter((line) => line.length >= 8).join("\n").slice(0, MAX_ARTICLE_CHARS);
 }
 
 function attributes(tag: string) {
@@ -143,23 +171,29 @@ function extractMedia(html: string, article: { id: string; url: string; source: 
   return items;
 }
 
-export async function readNewsLinks(input: unknown): Promise<NewsArticleSource[]> {
+export async function readNewsLinks(input: unknown, requireBodyParagraphs = false): Promise<NewsArticleSource[]> {
   if (!Array.isArray(input)) return [];
   const urls = [...new Set(input.filter((value): value is string => typeof value === "string"))]
-    .map((value) => value.trim()).filter(Boolean).slice(0, MAX_LINKS);
+    .map((value) => value.trim().replace(/^[“”‘’]+|[“”‘’]+$/g, "").trim()).filter(Boolean).slice(0, MAX_LINKS);
   return Promise.all(urls.map(async (rawUrl, index) => {
     const url = new URL(rawUrl);
     if (!["http:", "https:"].includes(url.protocol) || isPrivateHostname(url.hostname)) throw new Error(`第 ${index + 1} 条链接不是可读取的公开网页`);
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 20_000);
     try {
-      const response = await fetch(url, { redirect: "follow", signal: controller.signal,
-        headers: { Accept: "text/html,application/xhtml+xml", "User-Agent": "Mozilla/5.0 NewsAvatarWorkbench/1.0" } });
-      if (!response.ok) throw new Error(`读取失败（HTTP ${response.status}）`);
-      const contentType = response.headers.get("content-type") || "";
-      if (!contentType.includes("text/html") && !contentType.includes("text/plain")) throw new Error("不是新闻网页格式");
-      const html = await response.text();
-      const text = extractArticleText(html);
+      const response = await safeBytes(url.href, { left: 3_000_000 });
+      const contentType = response.type;
+      if (!contentType.includes("text/html") && !contentType.includes("text/plain") && !contentType.includes("application/xhtml+xml")) throw new Error("不是新闻网页格式");
+      const charset = contentType.match(/charset=([^;\s]+)/i)?.[1]
+        || response.bytes.toString("ascii", 0, 1500).match(/charset=["']?([\w-]+)/i)?.[1] || "utf-8";
+      const html = new TextDecoder(charset).decode(response.bytes);
+      let text = extractArticleText(html);
+      if (requireBodyParagraphs) {
+        const paragraphs = [...articleBody(html).matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)]
+          .map(match => decodeHtml(match[1].replace(/<[^>]+>/g, " ")))
+          .filter(line => line.length >= 25);
+        const body = paragraphs.join("\n");
+        if (body.length < 120) throw new Error("没有足够的正文段落，可能是图集、视频页或访问限制；请换一条文字报道链接");
+        text = body.slice(0, MAX_ARTICLE_CHARS);
+      }
       if (text.length < 80) throw new Error("没有提取到足够的新闻正文");
       const id = `article-${index + 1}`;
       const source = metaContent(html, ["og:site_name", "application-name"]) || url.hostname.replace(/^www\./, "");
@@ -172,6 +206,6 @@ export async function readNewsLinks(input: unknown): Promise<NewsArticleSource[]
     } catch (error) {
       const message = error instanceof Error && error.name === "AbortError" ? "读取超时" : error instanceof Error ? error.message : "读取失败";
       throw new Error(`第 ${index + 1} 条新闻链接${message}`);
-    } finally { clearTimeout(timer); }
+    }
   }));
 }

@@ -1,13 +1,17 @@
+import {projectMediaPath} from "../../../../../lib/project-paths";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 export const runtime = "nodejs";
 
+const dataRoot = process.env.STUDIO_DATA_DIR ? path.resolve(process.env.STUDIO_DATA_DIR) : process.cwd();
+const jobsRoot = projectMediaPath("composition-jobs");
+
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await context.params;
     if (!/^[a-f0-9]{32}$/.test(id)) return Response.json({ error: "合片任务编号无效" }, { status: 400 });
-    const root = path.join(process.cwd(), ".composition-jobs", id);
+    const root = path.join(jobsRoot, id);
     const job = JSON.parse(await readFile(path.join(root, "job.json"), "utf8"));
     if (job.status !== "completed") return Response.json({ error: "成片尚未完成" }, { status: 409 });
     const video = await readFile(path.join(root, "final.mp4"));

@@ -26,9 +26,9 @@ export async function handleLibrary(req,res,url,{json,jsonBody,bodyBuffer,cors})
     const projects=await Promise.all((await idsAt(path.join(libraryRoot,"projects"))).map(async id=>{
       const item=await readJson(path.join(libraryRoot,"projects",id,"record.json"));
       const s=item.snapshot;
-      return {id,name:item.name,revision:item.revision,updatedAt:item.updatedAt,anchorId:s.anchorId,step:s.step,hasScript:Boolean(s.script),hasAudio:Boolean(s.audioSliceJobId),hasVideo:Boolean(s.videoUrl),hasComposition:Boolean(s.compositionUrl)};
+      return {id,name:item.name,revision:item.revision,updatedAt:item.updatedAt,anchorId:s.anchorId,projectType:s.projectType,anchorName:s.profileSnapshot?.name,step:s.step,hasScript:Boolean(s.script),hasAudio:Boolean(s.audioSliceJobId),hasVideo:Boolean(s.videoUrl),hasComposition:Boolean(s.compositionUrl)};
     }));
-    json(res,200,{projects:projects.sort((a,b)=>b.updatedAt-a.updatedAt)});return true;
+    json(res,200,{projects:projects.filter(p=>p.projectType!=="creator").sort((a,b)=>b.updatedAt-a.updatedAt)});return true;
   }
   const project=p.match(/^\/library\/projects\/([a-f0-9]{32})(?:\/versions(?:\/(\d+))?)?$/);
   if(project&&method==="GET") {
@@ -58,8 +58,8 @@ export async function handleLibrary(req,res,url,{json,jsonBody,bodyBuffer,cors})
   }
   if(p==="/library/sops/activate"&&method==="POST") {
     const body=await jsonBody(req);
-    if(body.id!=="builtin-v4-3"&&!validId(body.id))throw fail("规则编号无效");
-    if(body.id!=="builtin-v4-3")await readJson(path.join(libraryRoot,"sops",body.id,"record.json"));
+    if(!["builtin-v4-3","builtin-v4-6","builtin-v4-7"].includes(body.id)&&!validId(body.id))throw fail("规则编号无效");
+    if(!["builtin-v4-3","builtin-v4-6","builtin-v4-7"].includes(body.id))await readJson(path.join(libraryRoot,"sops",body.id,"record.json"));
     await exclusive(()=>atomicJson(path.join(libraryRoot,"sops","active.json"),{id:body.id}));
     json(res,200,{active:await activeSop()});return true;
   }
@@ -81,6 +81,21 @@ export async function handleLibrary(req,res,url,{json,jsonBody,bodyBuffer,cors})
       return j;
     }));
     json(res,200,{jobs:jobs.sort((a,b)=>b.createdAt-a.createdAt)});return true;
+  }
+  if(p==="/library/uploads"&&method==="POST") {
+    const bytes=await bodyBuffer(req,55*1024*1024);
+    const name=decodeURIComponent(String(req.headers["x-file-name"]||"素材")).replace(/[\\/\r\n]/g,"_").slice(0,200);
+    const contentType=String(req.headers["content-type"]||"").toLowerCase();
+    const isVideo=contentType.startsWith("video/")||/\.(mp4|mov|m4v|webm)$/i.test(name);
+    const isImage=contentType.startsWith("image/")||/\.(jpe?g|png|webp)$/i.test(name);
+    if(!bytes.length||(!isVideo&&!isImage))throw fail("只支持 JPG、PNG、WebP、MP4、MOV 或 WebM 素材");
+    const extension=isVideo?"mp4":/\.png$/i.test(name)?"png":/\.webp$/i.test(name)?"webp":"jpg";
+    const id=newId(), dir=path.join(libraryRoot,"downloads",id), file=`media.${extension}`;
+    await mkdir(dir,{recursive:true});
+    await writeFile(path.join(dir,file),bytes);
+    const record={id,sourceUrl:"local-upload",type:isVideo?"video":"image",caption:name,status:"completed",progress:100,createdAt:Date.now(),file,uploaded:true,size:bytes.length};
+    await atomicJson(path.join(dir,"record.json"),record);
+    json(res,201,record);return true;
   }
   const media=p.match(/^\/library\/downloads\/([a-f0-9]{32})\/file$/);
   if(media&&["GET","HEAD"].includes(method)) {

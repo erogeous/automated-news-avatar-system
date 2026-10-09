@@ -18,7 +18,7 @@ type HeyGenVideoResponse = {
 };
 
 async function queryTask(videoId: string) {
-  const response = await fetch(`${HEYGEN_API_BASE}/v3/videos/${encodeURIComponent(videoId)}`, { headers: providerHeaders(), cache: "no-store" });
+  const response = await fetch(`${HEYGEN_API_BASE}/v3/videos/${encodeURIComponent(videoId)}`, { headers: providerHeaders(), cache: "no-store", signal: AbortSignal.timeout(30_000) });
   const text = await response.text();
   let payload: HeyGenVideoResponse = {};
   try { payload = text ? JSON.parse(text) : {}; } catch { throw new Error(`HeyGen 查询返回异常（HTTP ${response.status}）`); }

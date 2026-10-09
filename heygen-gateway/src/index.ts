@@ -4,10 +4,12 @@ interface Env {
 }
 
 const HEYGEN_ORIGIN = "https://api.heygen.com";
+const HEYGEN_UPLOAD_ORIGIN = "https://upload.heygen.com";
 const allowedPaths = [
   /^\/v3\/users\/me$/,
   /^\/v3\/videos$/,
   /^\/v3\/videos\/[A-Za-z0-9_-]{6,160}$/,
+  /^\/v1\/asset$/,
 ];
 
 function json(status: number, value: unknown) {
@@ -25,8 +27,9 @@ export default {
     if (!allowedPaths.some((pattern) => pattern.test(incoming.pathname))) return json(404, { error: "Not found" });
     if (!(["GET", "POST"].includes(request.method))) return json(405, { error: "Method not allowed" });
 
-    const upstream = new URL(incoming.pathname, HEYGEN_ORIGIN);
-    const headers = new Headers({ "X-Api-Key": env.HEYGEN_API_KEY, "Content-Type": "application/json" });
+    const isAssetUpload = incoming.pathname === "/v1/asset";
+    const upstream = new URL(incoming.pathname, isAssetUpload ? HEYGEN_UPLOAD_ORIGIN : HEYGEN_ORIGIN);
+    const headers = new Headers({ "X-Api-Key": env.HEYGEN_API_KEY, "Content-Type": isAssetUpload ? (request.headers.get("Content-Type") || "application/octet-stream") : "application/json" });
     const idempotencyKey = request.headers.get("Idempotency-Key");
     if (idempotencyKey) headers.set("Idempotency-Key", idempotencyKey);
     const response = await fetch(upstream, {
