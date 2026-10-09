@@ -18,11 +18,51 @@ export function publicAddress(address) {
   return family === 4 ? !blocked.check(address,"ipv4") :
     family === 6 && /^[23][0-9a-f]{3}:/i.test(address) && !blocked.check(address,"ipv6");
 }
+
+function dnsServers() {
+  return (process.env.NEWS_DNS_SERVERS || "223.5.5.5,119.29.29.29,1.1.1.1")
+    .split(",").map(value => value.trim()).filter(Boolean);
+}
+
+async function withTimeout(promise, milliseconds) {
+  let timer;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("DNS fallback timeout")), milliseconds); }),
+    ]);
+  } finally { clearTimeout(timer); }
+}
+
+export async function publicAddresses(hostname) {
+  const host = hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  if (isIP(host)) return [{ address: host, family: isIP(host) }];
+  try {
+    const system = await dns.lookup(host, { all: true });
+    if (system.length) return system;
+  } catch { /* try the independent public resolver below */ }
+
+  const resolver = new dns.Resolver();
+  resolver.setServers(dnsServers());
+  // dotdotnews currently serves the apex and www host from the same public
+  // edge. The apex fallback keeps article reads working when a server resolver
+  // intermittently returns ENOTFOUND only for the www record; HTTPS still uses
+  // the original hostname for SNI and certificate verification.
+  const candidates = host === "www.dotdotnews.com" ? [host, "dotdotnews.com"] : [host];
+  for (const candidate of candidates) {
+    try {
+      const addresses = await withTimeout(resolver.resolve4(candidate), 4_000);
+      if (addresses.length) return addresses.map(address => ({ address, family: 4 }));
+    } catch { /* try the next safe candidate */ }
+  }
+  throw fail(`域名暂时无法解析（${host}），请稍后重试`);
+}
+
 export async function safeBytes(input, budget, hops = 0) {
   if (hops > 4) throw fail("素材重定向次数过多");
   const url = new URL(input);
   if (!["http:","https:"].includes(url.protocol) || url.username || url.password || (url.port && !["80","443"].includes(url.port))) throw fail("素材必须是公开 HTTP/HTTPS 地址");
-  const addresses = await dns.lookup(url.hostname.replace(/^\[|\]$/g,""), { all: true });
+  const addresses = await publicAddresses(url.hostname);
   if (!addresses.length || addresses.some((v) => !publicAddress(v.address))) throw fail("拒绝访问本机、内网或保留地址");
   const address = addresses[0];
   return new Promise((resolve,reject) => {
