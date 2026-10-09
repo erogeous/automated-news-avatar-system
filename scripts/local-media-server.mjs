@@ -2,6 +2,7 @@ import {listProjectFiles,projectFilesPage,startProjectIndex} from './project-fil
 import {mediaPath} from './project-paths.mjs';
 import http from "node:http";
 import { parseSrt, validateCreatorComposition } from "./creator-composition.mjs";
+import { compositionMediaUrl } from "./composition-media-url.mjs";
 import { createAudioAlignedSrt, parseSilenceDetect, SUBTITLE_RULES } from "./subtitle-timeline.mjs";
 import { getCreatorProfile, saveCreatorProfile } from "./creator-profile.mjs";
 import { getHotspots } from "./hotspots.mjs";
@@ -95,12 +96,6 @@ function validUrl(value) {
 function processIsAlive(pid) {
   if (!Number.isInteger(pid) || pid <= 0) return false;
   try { process.kill(pid, 0); return true; } catch { return false; }
-}
-
-function compositionMediaUrl(value) {
-  if (typeof value !== "string") return "";
-  const local = value.match(/^\/api\/media\/(library\/downloads\/[a-f0-9]{32}\/file)$/);
-  return local ? `http://127.0.0.1:${port}/${local[1]}` : value;
 }
 
 async function handle(request, response) {
@@ -249,7 +244,9 @@ async function handle(request, response) {
     const audioJobId = typeof body.audioJobId === "string" ? body.audioJobId : "";
     if (!/^[a-f0-9]{32}$/.test(audioJobId)) { json(response, 400, { error: "完整配音任务编号无效" }); return; }
     await access(path.join(audioRoot, audioJobId, "source.mp3"));
-    if (!Array.isArray(body.avatarSegments) || !body.avatarSegments.length || body.avatarSegments.some((item) => !validUrl(item?.url))) { json(response, 400, { error: "数字人片段无效" }); return; }
+    if (!Array.isArray(body.avatarSegments) || !body.avatarSegments.length) { json(response, 400, { error: "数字人片段无效" }); return; }
+    body.avatarSegments = body.avatarSegments.map((item) => ({ ...item, url: compositionMediaUrl(item?.url, port) }));
+    if (body.avatarSegments.some((item) => !validUrl(item?.url))) { json(response, 400, { error: "数字人片段无效" }); return; }
     if (!Array.isArray(body.scenes)) { json(response, 400, { error: "新闻分镜无效" }); return; }
     try { validateCreatorComposition(body); } catch (error) { json(response, 400, {error:error.message}); return; }
     if (body.layout === "landscape") {
@@ -257,7 +254,7 @@ async function handle(request, response) {
       try { parseSrt(String(body.subtitlesSrt || ""), Number(body.audioDuration || 0)); }
       catch (error) { json(response, 400, { error: error.message }); return; }
     }
-    body.scenes = body.scenes.map((item) => ({ ...item, url: compositionMediaUrl(item?.url) }));
+    body.scenes = body.scenes.map((item) => ({ ...item, url: compositionMediaUrl(item?.url, port) }));
     if (body.scenes.some((item) => !validUrl(item?.url))) { json(response, 400, { error: "新闻分镜无效" }); return; }
     const id = randomBytes(16).toString("hex");
     const jobDir = path.join(compositionRoot, id);
