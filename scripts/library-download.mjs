@@ -19,11 +19,6 @@ export function publicAddress(address) {
     family === 6 && /^[23][0-9a-f]{3}:/i.test(address) && !blocked.check(address,"ipv6");
 }
 
-function dnsServers() {
-  return (process.env.NEWS_DNS_SERVERS || "223.5.5.5,119.29.29.29,1.1.1.1")
-    .split(",").map(value => value.trim()).filter(Boolean);
-}
-
 async function withTimeout(promise, milliseconds) {
   let timer;
   try {
@@ -34,6 +29,45 @@ async function withTimeout(promise, milliseconds) {
   } finally { clearTimeout(timer); }
 }
 
+const dohEndpoints = [
+  { address: "223.5.5.5", servername: "dns.alidns.com", path: "/resolve" },
+  { address: "1.1.1.1", servername: "cloudflare-dns.com", path: "/dns-query" },
+  { address: "8.8.8.8", servername: "dns.google", path: "/resolve" },
+];
+
+export function resolve4Doh(hostname, endpoint = dohEndpoints[0]) {
+  return new Promise((resolve, reject) => {
+    const request = https.get({
+      hostname: endpoint.address,
+      servername: endpoint.servername,
+      path: `${endpoint.path}?name=${encodeURIComponent(hostname)}&type=A`,
+      headers: { Host: endpoint.servername, Accept: "application/dns-json" },
+    }, response => {
+      const chunks = [];
+      let size = 0;
+      response.on("data", chunk => {
+        size += chunk.length;
+        if (size > 64_000) response.destroy(new Error("DNS response too large"));
+        else chunks.push(chunk);
+      });
+      response.on("error", reject);
+      response.on("end", () => {
+        if (response.statusCode !== 200) return reject(new Error(`DNS HTTP ${response.statusCode}`));
+        try {
+          const payload = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+          const addresses = Array.isArray(payload.Answer) ? payload.Answer
+            .filter(answer => answer?.type === 1 && typeof answer.data === "string" && isIP(answer.data) === 4)
+            .map(answer => answer.data) : [];
+          addresses.length ? resolve(addresses) : reject(new Error("DNS answer empty"));
+        } catch (error) { reject(error); }
+      });
+    });
+    const timer = setTimeout(() => request.destroy(new Error("DNS fallback timeout")), 4_000);
+    request.on("error", reject);
+    request.on("close", () => clearTimeout(timer));
+  });
+}
+
 export async function publicAddresses(hostname) {
   const host = hostname.replace(/^\[|\]$/g, "").toLowerCase();
   if (isIP(host)) return [{ address: host, family: isIP(host) }];
@@ -42,18 +76,18 @@ export async function publicAddresses(hostname) {
     if (system.length) return system;
   } catch { /* try the independent public resolver below */ }
 
-  const resolver = new dns.Resolver();
-  resolver.setServers(dnsServers());
   // dotdotnews currently serves the apex and www host from the same public
   // edge. The apex fallback keeps article reads working when a server resolver
   // intermittently returns ENOTFOUND only for the www record; HTTPS still uses
   // the original hostname for SNI and certificate verification.
   const candidates = host === "www.dotdotnews.com" ? [host, "dotdotnews.com"] : [host];
   for (const candidate of candidates) {
-    try {
-      const addresses = await withTimeout(resolver.resolve4(candidate), 4_000);
-      if (addresses.length) return addresses.map(address => ({ address, family: 4 }));
-    } catch { /* try the next safe candidate */ }
+    for (const endpoint of dohEndpoints) {
+      try {
+        const addresses = await withTimeout(resolve4Doh(candidate, endpoint), 4_500);
+        if (addresses.length) return addresses.map(address => ({ address, family: 4 }));
+      } catch { /* try the next safe candidate or resolver */ }
+    }
   }
   throw fail(`域名暂时无法解析（${host}），请稍后重试`);
 }
