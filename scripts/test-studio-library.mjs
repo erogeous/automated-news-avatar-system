@@ -7,8 +7,9 @@ process.env.STUDIO_LIBRARY_DIR=await mkdtemp(path.join(os.tmpdir(),"avatar-libra
 const {parseSop,newId,saveProject,readJson,libraryRoot,activeSop,builtinSop,atomicJson}=await import("./studio-library.mjs");
 const {publicAddress,safeBytes}=await import("./library-download.mjs");
 const {handleLibrary}=await import("./studio-library-http.mjs");
-const id=newId(),snapshot={projectName:"测试一期",script:"测试稿件",urls:[],audioSliceJobId:"",step:2};
+const id=newId(),snapshot={projectName:"测试一期",script:"测试稿件",urls:[],audioSliceJobId:"",step:2,subtitleSrt:"1\n00:00:00,000 --> 00:00:01,000\n测试\n",subtitleStats:{cueCount:1,alignment:"audio-pauses"},subtitleStatus:"aligned"};
 assert.equal((await saveProject({id,expectedRevision:0,snapshot})).revision,1);
+assert.equal((await readJson(path.join(libraryRoot,"projects",id,"record.json"))).snapshot.subtitleStatus,"aligned");
 assert.equal((await saveProject({id,expectedRevision:1,snapshot:{...snapshot,script:"第二版"}})).revision,2);
 await assert.rejects(saveProject({id,expectedRevision:1,snapshot}),/其他页面/);
 assert.equal((await readJson(path.join(libraryRoot,"projects",id,"versions","1.json"))).snapshot.script,"测试稿件");
