@@ -202,13 +202,21 @@ export default function Home() {
   const [extractingMedia, setExtractingMedia] = useState(false);
   const downloadSubmitting = useRef(false);
   useEffect(() => {
-    if (!autoDownload || downloadSubmitting.current) return;
+    if (downloadSubmitting.current) return;
     if (Object.values(mediaDownloads).some(job => ["queued", "downloading"].includes(job.status))) return;
-    const next = newsMedia.find(item => !mediaDownloads[item.id]);
-    if (!next) return;
+    // Selected storyboard items are production inputs and must be stored locally.
+    // Prioritize them, then continue an explicit full-page background download.
+    const selectedNext = selectedMediaIds
+      .map((id) => newsMedia.find((item) => item.id === id))
+      .find((item): item is NewsMedia => Boolean(item && !mediaDownloads[item.id]));
+    const next = selectedNext || (autoDownload ? newsMedia.find(item => !mediaDownloads[item.id]) : undefined);
+    if (!next) {
+      if (autoDownload && newsMedia.length > 0 && newsMedia.every((item) => Boolean(mediaDownloads[item.id]))) setAutoDownload(false);
+      return;
+    }
     downloadSubmitting.current = true;
     void downloadMedia(next).finally(() => { downloadSubmitting.current = false; });
-  }, [autoDownload, newsMedia, mediaDownloads]);
+  }, [autoDownload, selectedMediaIds, newsMedia, mediaDownloads]);
   async function extractAndDownloadMedia() {
     setExtractingMedia(true); setDownloadError(""); setAutoDownload(false);
     try {
@@ -266,10 +274,13 @@ export default function Home() {
   const imageCount = newsMedia.filter((item) => item.type === "image").length;
   const videoCount = newsMedia.filter((item) => item.type === "video").length;
   const selectedMedia = selectedMediaIds.map((id) => newsMedia.find((item) => item.id === id)).filter((item): item is NewsMedia => Boolean(item));
+  const selectedMediaPending = selectedMedia.filter((item) => mediaDownloads[item.id]?.status !== "completed");
+  const selectedMediaFailed = selectedMedia.filter((item) => mediaDownloads[item.id]?.status === "failed");
   const storyboardDuration = selectedMedia.reduce((total, item) => total + (sceneSettings[item.id]?.duration ?? (item.type === "video" ? 10 : 6)), 0);
   const completedAvatarSliceIds = new Set(avatarSliceJobs.filter((job) => job.status === "completed" && job.videoUrl).map((job) => job.sliceId));
   const selectedSlices = audioSlices.filter((slice) => selectedSliceIds.includes(slice.id));
   const missingAvatarSlices = selectedSlices.filter((slice) => !completedAvatarSliceIds.has(slice.id));
+  const avatarTasksActive = avatarSliceJobs.some((job) => selectedSliceIds.includes(job.sliceId) && ["queued", "running"].includes(job.status));
 
   useEffect(() => {
     setVideoReady(selectedSliceIds.length > 0 && selectedSliceIds.every((id) => completedAvatarSliceIds.has(id)));
@@ -796,9 +807,8 @@ export default function Home() {
       const missing = selectedSlices.filter((slice) => !completedAvatarSegments.some((job) => job.sliceId === slice.id));
       if (missing.length) throw new Error(`已勾选的数字人片段还缺少 ${missing.length} 段，请先生成完成。`);
       let start = 0;
-      if (selectedMedia.some(item => mediaDownloads[item.id]?.status !== "completed")) {
-        throw new Error("请先返回稿件页，将已选图片和视频全部下载入库；下载成功后再合片。");
-      }
+      if (selectedMediaFailed.length) throw new Error(`有 ${selectedMediaFailed.length} 个已选分镜素材下载失败，请返回稿件页查看原因并重试。`);
+      if (selectedMediaPending.length) throw new Error(`已选分镜素材正在自动下载（剩余 ${selectedMediaPending.length} 项），请稍候后再生成成片。`);
       const scenes = selectedMedia.map((item) => {
         const duration = sceneSettings[item.id]?.duration ?? (item.type === "video" ? 10 : 6);
         const downloaded = mediaDownloads[item.id];
@@ -828,6 +838,13 @@ export default function Home() {
     }
   }
 
+  function canOpenStep(number: number) {
+    if (number === 1) return true;
+    if (number === 2) return Boolean(script.trim());
+    if (number === 3) return Boolean(voiceReady && audioSliceJobId);
+    return Boolean(voiceReady && audioSliceJobId && audioSlices.length);
+  }
+
   return (
     <main>
       <header className="topbar">
@@ -846,9 +863,10 @@ export default function Home() {
         <nav className="steps" aria-label="制作步骤">
           {stepNames.map((name, index) => {
             const number = index + 1;
+            const available = canOpenStep(number);
             const state = number < step ? "done" : number === step ? "active" : "";
             return (
-              <button key={name} className={`step ${state}`} disabled={number > step || busy || slicingBusy} aria-current={number === step ? "step" : undefined} onClick={() => number <= step && setStep(number as Step)}>
+              <button key={name} className={`step ${state}`} disabled={!available || busy || slicingBusy} aria-current={number === step ? "step" : undefined} onClick={() => available && setStep(number as Step)}>
                 <span>{number < step ? "✓" : number}</span>
                 <b>{name}</b>
               </button>
@@ -938,7 +956,7 @@ export default function Home() {
                                 {sequence >= 0 && <strong className="sequenceBadge">{sequence + 1}</strong>}
                               </a>
                               <div className="mediaMeta"><div><b>{item.caption || (item.type === "video" ? "新闻视频" : "新闻图片")}</b><span>{item.source}</span></div><button onClick={() => toggleMedia(item.id)}>{sequence >= 0 ? "移除" : "加入分镜"}</button></div>
-                              <div className="mediaDownloadStatus">{mediaDownloads[item.id]?.status === "completed" ? <a href={`/api/library/downloads/${mediaDownloads[item.id].id}/file`} target="_blank" rel="noreferrer">已入库 · 打开素材</a> : <button disabled={["queued","downloading"].includes(mediaDownloads[item.id]?.status)} onClick={() => void downloadMedia(item)}>{["queued","downloading"].includes(mediaDownloads[item.id]?.status) ? `下载中 ${mediaDownloads[item.id].progress}%` : mediaDownloads[item.id]?.status === "failed" ? "重试下载" : "下载入库"}</button>}{mediaDownloads[item.id]?.error && <small>{mediaDownloads[item.id].error}</small>}</div>
+                              <div className="mediaDownloadStatus">{mediaDownloads[item.id]?.status === "completed" ? <a href={`/api/library/downloads/${mediaDownloads[item.id].id}/file`} target="_blank" rel="noreferrer">已入库 · 打开素材</a> : mediaDownloads[item.id]?.status === "failed" ? <button onClick={() => void downloadMedia(item)}>下载失败 · 重试</button> : sequence >= 0 ? <span>{["queued","downloading"].includes(mediaDownloads[item.id]?.status) ? `已加入分镜 · 自动下载 ${mediaDownloads[item.id]?.progress || 0}%` : "已加入分镜 · 等待自动下载"}</span> : <button disabled={["queued","downloading"].includes(mediaDownloads[item.id]?.status)} onClick={() => void downloadMedia(item)}>{["queued","downloading"].includes(mediaDownloads[item.id]?.status) ? `下载中 ${mediaDownloads[item.id].progress}%` : "下载入库"}</button>}{mediaDownloads[item.id]?.error && <small>{mediaDownloads[item.id].error}</small>}</div>
                             </article>
                           );})}
                         </div>
@@ -980,7 +998,7 @@ export default function Home() {
             {voiceError && <div className="errorNotice" role="alert">{voiceError}</div>}
             <div className="notice"><span>i</span><p>先执行《點觀香港》粤语配音转化 SOP V1.1，生成可人工修改的粤语配音稿；确认日期、数字、专名和断句后，才会调用 MiniMax 生成正式配音。</p></div>
             {cantoneseScript && <section className="cantoneseReview"><div><h3>粤语配音稿确认</h3><p>请直接修改下方文本。事实检查只作提示，不再丢弃模型已经生成的粤语稿。</p></div>{conversionMissingFacts.length > 0 ? <div className="errorNotice"><b>需要人工核对母稿中的内容：</b> {conversionMissingFacts.join("、")}。如果只是“21日／21號”等书写差异，可核对后继续；如确实遗漏，请在下方补回。</div> : <div className="reviewPassed">数字、日期、金额和英文缩写自动对照未发现遗漏。</div>}<textarea value={cantoneseScript} onChange={(event) => { setCantoneseScript(event.target.value); setConversionConfirmed(false); }} aria-label="可编辑粤语配音稿" /><label className="manualConfirm"><input type="checkbox" checked={conversionConfirmed} onChange={(event) => setConversionConfirmed(event.target.checked)} /><span>我已对照母稿核对日期、数字、专名及事实，可以生成正式配音</span></label></section>}
-            <div className="actionBar"><p>排班主播：{selectedAnchor.name}，自动匹配“{selectedAnchor.voiceName}”。</p>{!cantoneseScript ? <button className="primary" disabled={script.trim().length < 100 || busy || connection !== "ready"} onClick={convertToCantonese}>{busy ? "正在生成粤语配音稿…" : "确认母稿并生成粤语配音稿"}</button> : <><button className="secondary" disabled={busy} onClick={convertToCantonese}>重新转换</button><button className="primary" disabled={busy || !conversionConfirmed || cantoneseScript.trim().length < 100} onClick={generateVoice}>{busy ? "正在生成完整配音…" : "确认粤语稿并生成完整配音"}</button></>}</div>
+            <div className="actionBar"><p>排班主播：{selectedAnchor.name}，自动匹配“{selectedAnchor.voiceName}”。</p>{!cantoneseScript ? <button className="primary" disabled={script.trim().length < 100 || busy || connection !== "ready"} onClick={convertToCantonese}>{busy ? "正在生成粤语配音稿…" : "确认母稿并生成粤语配音稿"}</button> : voiceReady && audioSliceJobId ? <><button className="secondary" disabled={busy || !conversionConfirmed} onClick={generateVoice}>{busy ? "正在重新生成…" : "重新生成完整配音"}</button><button className="primary" disabled={busy} onClick={() => setStep(3)}>继续到配音确认 →</button></> : <><button className="secondary" disabled={busy} onClick={convertToCantonese}>重新转换</button><button className="primary" disabled={busy || !conversionConfirmed || cantoneseScript.trim().length < 100} onClick={generateVoice}>{busy ? "正在生成完整配音…" : "确认粤语稿并生成完整配音"}</button></>}</div>
           </section>
         )}
 
@@ -1014,7 +1032,7 @@ export default function Home() {
               {outputLayout === "landscape" && <section className="chromaCalibration"><div className="chromaPreview"><canvas ref={greenScreenPreviewRef} width="640" height="360" aria-label="绿幕抠像合成预览" /></div><div className="chromaControls"><div><b>绿幕校准</b><span>实时预览仅用于估算边缘；最终参数会传给 FFmpeg。系统会限制在安全范围内，保护头发、面部和肩部轮廓。</span></div><label><span>相似度 <b>{chromaSimilarity.toFixed(3)}</b></span><input type="range" min="0.06" max="0.12" step="0.005" value={chromaSimilarity} onChange={(event) => setChromaSimilarity(Number(event.target.value))} /><small>建议保持 0.08–0.10；过高会侵蚀人物边缘。</small></label><label><span>边缘柔化 <b>{chromaBlend.toFixed(3)}</b></span><input type="range" min="0.03" max="0.06" step="0.005" value={chromaBlend} onChange={(event) => setChromaBlend(Number(event.target.value))} /><small>建议使用 0.05，使发丝和肩部边缘自然过渡。</small></label><button onClick={() => { setChromaSimilarity(0.10); setChromaBlend(0.05); }}>恢复推荐值</button></div></section>}
             </section>
             {avatarError && <div className="errorNotice" role="alert">{avatarError}</div>}
-            <div className="actionBar"><button className="secondary" onClick={() => { setVoiceReady(false); setStep(2); }}>返回更换主播或稿件</button><button className="secondary" disabled={!audioSlices.length || busy} onClick={restoreCompletedAvatarJobs}>{busy ? "正在读取…" : "恢复 HeyGen 历史任务"}</button><button className="primary" disabled={!voiceReady || !selectedSliceIds.length || busy || slicingBusy || missingAvatarSlices.length === 0} onClick={generateAvatar}>{busy ? "正在提交，已进入任务页…" : !selectedSliceIds.length ? "请先勾选数字人片段" : missingAvatarSlices.length ? `提交 ${missingAvatarSlices.length} 段并自动拉回` : "所选数字人片段已完成"}</button></div>
+            <div className="actionBar"><button className="secondary" onClick={() => setStep(2)}>返回更换主播或稿件</button><button className="secondary" disabled={!audioSlices.length || busy} onClick={restoreCompletedAvatarJobs}>{busy ? "正在读取…" : "恢复 HeyGen 历史任务"}</button><button className="primary" disabled={!voiceReady || !selectedSliceIds.length || busy || slicingBusy} onClick={avatarTasksActive || missingAvatarSlices.length === 0 ? () => setStep(4) : generateAvatar}>{busy ? "正在提交，已进入任务页…" : !selectedSliceIds.length ? "请先勾选数字人片段" : avatarTasksActive ? "查看数字人进度 →" : missingAvatarSlices.length ? `提交 ${missingAvatarSlices.length} 段并自动拉回` : "查看数字人与合片 →"}</button></div>
           </section>
         )}
 
@@ -1032,7 +1050,7 @@ export default function Home() {
               {outputLayout === "landscape" && <section className="composerControls"><div><h4>手动合片布局</h4><p>这里调整数字人出镜时的主播与素材小窗位置；没有数字人的时段，新闻素材自动铺满全屏。</p></div><div className="composerControlGrid"><label><span>主播横向位置 <b>{avatarX}</b></span><input type="range" min="600" max="1400" step="10" value={avatarX} onChange={(event) => setAvatarX(Number(event.target.value))} /></label><label><span>主播纵向位置 <b>{avatarY}</b></span><input type="range" min="-300" max="300" step="10" value={avatarY} onChange={(event) => setAvatarY(Number(event.target.value))} /></label><label><span>主播大小 <b>{avatarHeight}</b></span><input type="range" min="600" max="1400" step="20" value={avatarHeight} onChange={(event) => setAvatarHeight(Number(event.target.value))} /></label><label><span>素材窗横向位置 <b>{sceneX}</b></span><input type="range" min="0" max="1000" step="10" value={sceneX} onChange={(event) => setSceneX(Number(event.target.value))} /></label><label><span>素材窗纵向位置 <b>{sceneY}</b></span><input type="range" min="0" max="700" step="10" value={sceneY} onChange={(event) => setSceneY(Number(event.target.value))} /></label><label><span>素材窗大小 <b>{sceneWidth}</b></span><input type="range" min="420" max="1200" step="20" value={sceneWidth} onChange={(event) => setSceneWidth(Number(event.target.value))} /></label></div><button className="secondary" onClick={() => { setAvatarX(930); setAvatarY(50); setAvatarHeight(1040); setSceneX(80); setSceneY(250); setSceneWidth(820); }}>恢复推荐布局</button></section>}
               {compositionError && <div className="errorNotice" role="alert">{compositionError}</div>}
               <section className="localEditPackage"><div><span className="eyebrow">LOCAL EDIT PACKAGE</span><h4>本地剪辑包</h4><p>服务器直接生成可发布成片；需要精细修改时，可下载包含完整配音、数字人片段、新闻素材、音频对齐字幕、包装资产和时间线说明的压缩包，在剪映、Premiere 或 Final Cut 中继续处理。</p></div>{compositionStatus === "completed" && compositionJobId ? <a className="secondary downloadLink" href={`${MEDIA_SERVICE_URL}/compositions/${compositionJobId}/edit-package`}>下载本地剪辑包</a> : <button className="secondary" disabled>成片完成后可下载</button>}</section>
-              <div className="actionBar"><p>{subtitleStatus !== "aligned" ? "字幕尚未与最终音频完成时码校验。" : missingAvatarSlices.length ? `已勾选的数字人片段还缺少 ${missingAvatarSlices.length} 段。` : !selectedMedia.length ? "未选新闻分镜：未出镜时段将使用循环背景和节目包装。" : "完整配音作为唯一主音轨；数字人出镜时使用素材小窗，未出镜时素材自动全屏。"}</p>{compositionUrl ? <a className="primary downloadLink" href={compositionUrl}>下载最终成片</a> : <button className="primary" disabled={subtitleStatus !== "aligned" || !selectedSliceIds.length || !videoReady || missingAvatarSlices.length > 0 || !audioSliceJobId || ["queued", "downloading", "rendering"].includes(compositionStatus)} onClick={startComposition}>{["queued", "downloading", "rendering"].includes(compositionStatus) ? `正在合片 ${compositionProgress}%` : compositionStatus === "failed" ? "重新提交合片" : "生成最终成片"}</button>}</div>
+              <div className="actionBar"><p>{subtitleStatus !== "aligned" ? "字幕尚未与最终音频完成时码校验。" : missingAvatarSlices.length ? `已勾选的数字人片段还缺少 ${missingAvatarSlices.length} 段。` : selectedMediaFailed.length ? `有 ${selectedMediaFailed.length} 个分镜素材下载失败，请返回稿件页重试。` : selectedMediaPending.length ? `已选分镜正在自动下载，剩余 ${selectedMediaPending.length} 项。` : !selectedMedia.length ? "未选新闻分镜：未出镜时段将使用循环背景和节目包装。" : "已选分镜素材已自动入库；完整配音作为唯一主音轨。"}</p>{compositionUrl ? <a className="primary downloadLink" href={compositionUrl}>下载最终成片</a> : <button className="primary" disabled={subtitleStatus !== "aligned" || !selectedSliceIds.length || !videoReady || missingAvatarSlices.length > 0 || selectedMediaPending.length > 0 || !audioSliceJobId || ["queued", "downloading", "rendering"].includes(compositionStatus)} onClick={startComposition}>{selectedMediaPending.length ? `自动准备分镜素材（${selectedMediaPending.length}）` : ["queued", "downloading", "rendering"].includes(compositionStatus) ? `正在合片 ${compositionProgress}%` : compositionStatus === "failed" ? "重新提交合片" : "生成最终成片"}</button>}</div>
             </section>
           </section>
         )}
