@@ -3,6 +3,9 @@ import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 import ts from "typescript";
+import { createRequire } from "node:module";
+
+const nativeRequire = createRequire(import.meta.url);
 
 async function scenario({ stage, delayedSeconds, networkError = false }) {
   const timers = new Map();
@@ -25,7 +28,7 @@ async function scenario({ stage, delayedSeconds, networkError = false }) {
     }).outputText;
     vm.runInNewContext(code, {
       module, exports: module.exports,
-      require: (name) => load(path.resolve(path.dirname(file), name.endsWith(".json") ? name : name + ".ts")),
+      require: (name) => name.startsWith("node:") ? nativeRequire(name) : load(path.resolve(path.dirname(file), name.endsWith(".json") ? name : name + ".ts")),
       process: { env: { OPENIAPI_BASE_URL: "https://test.invalid/v1", OPENIAPI_API_KEY: "test-only" } },
       AbortController, setTimeout: schedule, clearTimeout: (id) => timers.delete(id),
       fetch: async (_url, options) => {

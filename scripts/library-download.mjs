@@ -100,10 +100,16 @@ export async function safeBytes(input, budget, hops = 0) {
   if (!addresses.length || addresses.some((v) => !publicAddress(v.address))) throw fail("拒绝访问本机、内网或保留地址");
   const address = addresses[0];
   return new Promise((resolve,reject) => {
-    const req = (url.protocol === "https:" ? https : http).get(url, {
-      // Pin the validated DNS answer to this connection (including redirected requests).
-      lookup: (_host, options, done) => options.all ? done(null,[address]) : done(null,address.address,address.family),
-      headers: { "User-Agent": "NewsAvatarLibrary/1.0", "Accept-Encoding": "identity" },
+    // Connect to the already validated public IP directly. Keeping the original
+    // hostname in SNI and Host preserves TLS/virtual-host validation without the
+    // unsupported `options.lookup` hook used by some vinext runtimes.
+    const req = (url.protocol === "https:" ? https : http).get({
+      protocol: url.protocol,
+      hostname: address.address,
+      port: url.port || undefined,
+      path: `${url.pathname}${url.search}`,
+      servername: url.protocol === "https:" ? url.hostname : undefined,
+      headers: { Host: url.host, "User-Agent": "NewsAvatarLibrary/1.0", "Accept-Encoding": "identity" },
     }, (res) => {
       if ([301,302,303,307,308].includes(res.statusCode) && res.headers.location) {
         res.resume(); clearTimeout(timer);

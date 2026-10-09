@@ -3,8 +3,10 @@ import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 import ts from "typescript";
+import { createRequire } from "node:module";
 
 const root = process.cwd();
+const nativeRequire = createRequire(import.meta.url);
 const requests = [];
 let payload;
 let status = 200;
@@ -18,7 +20,7 @@ function load(file) {
   }).outputText;
   vm.runInNewContext(code, {
     module: loadedModule, exports: loadedModule.exports,
-    require: (name) => load(path.resolve(path.dirname(file), name.endsWith(".json") ? name : name + ".ts")),
+    require: (name) => name.startsWith("node:") ? nativeRequire(name) : load(path.resolve(path.dirname(file), name.endsWith(".json") ? name : name + ".ts")),
     process: { env: { OPENIAPI_BASE_URL: "https://test.invalid/v1", OPENIAPI_API_KEY: "test-only" } },
     AbortController, setTimeout, clearTimeout,
     fetch: async (_url, options) => {

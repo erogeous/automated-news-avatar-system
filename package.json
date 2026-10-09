@@ -15,7 +15,7 @@
     "test": "npm run build && node --test tests/rendered-html.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",
-    "test:creator": "node scripts/test-creator.mjs && node scripts/test-studio-library.mjs && node scripts/test-creator-render.mjs",
+    "test:creator": "node scripts/test-creator.mjs && node scripts/test-studio-library.mjs && node scripts/test-creator-render.mjs && node scripts/test-news-render.mjs",
     "typecheck:app": "tsc -p tsconfig.app.json",
     "files:index": "node scripts/project-file-index.mjs"
   },

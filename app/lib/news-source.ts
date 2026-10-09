@@ -1,7 +1,25 @@
-import { safeBytes } from "../../scripts/library-download.mjs";
 const MAX_LINKS = 10;
 const MAX_ARTICLE_CHARS = 18_000;
 const MAX_MEDIA_PER_ARTICLE = 30;
+
+async function safeBytes(input: string) {
+  const response = await fetch(`http://127.0.0.1:${process.env.MEDIA_SERVICE_PORT || 3101}/news/fetch`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url: input }),
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({})) as { error?: string };
+    throw new Error(payload.error || `新闻网页读取失败（HTTP ${response.status}）`);
+  }
+  const encodedUrl = response.headers.get("x-final-url") || "";
+  return {
+    bytes: new Uint8Array(await response.arrayBuffer()),
+    type: response.headers.get("content-type") || "",
+    url: encodedUrl ? decodeURIComponent(encodedUrl) : input,
+  };
+}
 
 export type NewsMedia = {
   id: string;
@@ -179,11 +197,11 @@ export async function readNewsLinks(input: unknown, requireBodyParagraphs = fals
     const url = new URL(rawUrl);
     if (!["http:", "https:"].includes(url.protocol) || isPrivateHostname(url.hostname)) throw new Error(`第 ${index + 1} 条链接不是可读取的公开网页`);
     try {
-      const response = await safeBytes(url.href, { left: 3_000_000 });
+      const response = await safeBytes(url.href);
       const contentType = response.type;
       if (!contentType.includes("text/html") && !contentType.includes("text/plain") && !contentType.includes("application/xhtml+xml")) throw new Error("不是新闻网页格式");
       const charset = contentType.match(/charset=([^;\s]+)/i)?.[1]
-        || response.bytes.toString("ascii", 0, 1500).match(/charset=["']?([\w-]+)/i)?.[1] || "utf-8";
+        || new TextDecoder("ascii").decode(response.bytes.subarray(0, 1500)).match(/charset=["']?([\w-]+)/i)?.[1] || "utf-8";
       const html = new TextDecoder(charset).decode(response.bytes);
       let text = extractArticleText(html);
       if (requireBodyParagraphs) {

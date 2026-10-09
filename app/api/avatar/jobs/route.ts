@@ -15,6 +15,18 @@ function providerHeaders(): Record<string, string> {
   return direct ? { "X-Api-Key": apiKey() } : { Authorization: `Bearer ${apiKey()}` };
 }
 
+async function localizeVideo(videoId: string, sliceIndex: string, sourceUrl: string) {
+  const service = `http://127.0.0.1:${process.env.MEDIA_SERVICE_PORT || 3101}`;
+  const response = await fetch(`${service}/avatar-outputs`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ job_id: videoId, slice_id: `slice-${sliceIndex}`, source_url: sourceUrl }),
+    signal: AbortSignal.timeout(180_000),
+  });
+  const payload = await response.json() as { url?: string; error?: string };
+  if (!response.ok || !payload.url) throw new Error(payload.error || "HeyGen 历史视频保存到本地失败");
+  return `/api/media${payload.url}`;
+}
+
 async function formAsset(value: FormDataEntryValue | null, kind: "image" | "audio") {
   if (!(value instanceof File)) throw new Error(`缺少${kind === "image" ? "主播图片" : "驱动音频"}文件`);
   const bytes = await value.arrayBuffer();
@@ -63,7 +75,11 @@ export async function GET(request: Request) {
       const id = item.id || item.video_id || "";
       const detailResponse = await fetch(`${HEYGEN_API_BASE}/v3/videos/${encodeURIComponent(id)}`, { headers: providerHeaders(), cache: "no-store", signal: AbortSignal.timeout(30_000) });
       const detail = await detailResponse.json() as { data?: { video_url?: string; url?: string } };
-      return { id, title: item.title || item.video_title || "", status: item.status, video_url: detail.data?.video_url || detail.data?.url || "" };
+      const title = item.title || item.video_title || "";
+      const sliceIndex = title.match(/slice-(\d{3})/i)?.[1] || "000";
+      const remoteUrl = detail.data?.video_url || detail.data?.url || "";
+      const videoUrl = remoteUrl ? await localizeVideo(id, sliceIndex, remoteUrl) : "";
+      return { id: `heygen_${id}__slice-${sliceIndex}`, title, status: item.status, video_url: videoUrl };
     }));
     return Response.json({ jobs: jobs.filter((item) => item.id && item.video_url) }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
@@ -141,7 +157,7 @@ export async function POST(request: Request) {
     const errorMessage = typeof payload.error === "string" ? payload.error : payload.error?.message;
     if (!response.ok || !payload.data?.video_id) throw new Error(errorMessage || payload.message || `HeyGen 提交失败（HTTP ${response.status}）`);
     console.info(`[avatar/jobs] submitted video=${payload.data.video_id} elapsed_ms=${Date.now() - startedAt}`);
-    return Response.json({ id: `heygen_${payload.data.video_id}`, provider: "heygen", status: "queued", progress: 0 }, { headers: { "Cache-Control": "no-store" } });
+    return Response.json({ id: `heygen_${payload.data.video_id}__slice-${sliceIndex.padStart(3, "0")}`, provider: "heygen", status: "queued", progress: 0 }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "HeyGen 数字人任务提交失败";
     console.error(`[avatar/jobs] failed elapsed_ms=${Date.now() - startedAt} error=${message}`);

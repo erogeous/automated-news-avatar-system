@@ -6,12 +6,13 @@ import { createAudioAlignedSrt, parseSilenceDetect, SUBTITLE_RULES } from "./sub
 import { getCreatorProfile, saveCreatorProfile } from "./creator-profile.mjs";
 import { getHotspots } from "./hotspots.mjs";
 import { spawn } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { access, copyFile, mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { loadEnvFile } from "node:process";
 import { handleLibrary, serveFile } from "./studio-library-http.mjs";
+import { safeBytes } from "./library-download.mjs";
 
 const require = createRequire(import.meta.url);
 const ffmpegPath = require("ffmpeg-static");
@@ -116,6 +117,38 @@ async function handle(request, response) {
     response.end(url.pathname.endsWith('.json')?JSON.stringify(index):projectFilesPage(index));return;
   }
   if (request.method === "GET" && url.pathname === "/health") { json(response, 200, { ready: true, ffmpeg: Boolean(ffmpegPath) }); return; }
+  if (request.method === "POST" && url.pathname === "/news/fetch") {
+    const body = await jsonBody(request);
+    if (!validUrl(body.url)) { json(response, 400, { error: "新闻链接无效" }); return; }
+    const fetched = await safeBytes(body.url, { left: 3_000_000 });
+    response.writeHead(200, cors({
+      "Content-Type": fetched.type || "application/octet-stream",
+      "Content-Length": String(fetched.bytes.length),
+      "X-Final-Url": encodeURIComponent(fetched.url),
+      "Cache-Control": "no-store",
+    }));
+    response.end(fetched.bytes); return;
+  }
+  if (request.method === "POST" && url.pathname === "/avatar-outputs") {
+    const body = await jsonBody(request);
+    if (!validUrl(body.source_url) || typeof body.job_id !== "string" || !/^[A-Za-z0-9_-]{6,160}$/.test(body.job_id)
+      || typeof body.slice_id !== "string" || !/^slice-\d{3}$/.test(body.slice_id)) {
+      json(response, 400, { error: "HeyGen 回传视频参数无效" }); return;
+    }
+    await mkdir(avatarOutputRoot, { recursive: true });
+    const token = createHash("sha256").update(body.job_id).digest("hex").slice(0, 32);
+    const file = `${body.slice_id}-${token}.mp4`;
+    const target = path.join(avatarOutputRoot, file);
+    try { await access(target); }
+    catch {
+      const fetched = await safeBytes(body.source_url, { left: 250_000_000 });
+      if (fetched.type.includes("text/") || fetched.type.includes("html")) throw new Error("HeyGen 回传地址不是视频文件");
+      const temporary = `${target}.tmp-${process.pid}`;
+      await writeFile(temporary, fetched.bytes);
+      await rename(temporary, target);
+    }
+    json(response, 200, { stored: true, file, url: `/avatar-outputs/${file}` }); return;
+  }
   const anchorAsset = url.pathname.match(/^\/anchors\/(hk-(?:male|female)-anchor-(?:render\.jpg|greenscreen-16x9-v2\.png))$/);
   if (["GET", "HEAD"].includes(request.method) && anchorAsset) {
     await serveFile(request, response, path.join(root, "public", "anchors", anchorAsset[1]), anchorAsset[1].endsWith("png") ? "image/png" : "image/jpeg", cors()); return;

@@ -71,7 +71,7 @@ console.log('PASS: 9 sources, RSS/Atom/HTML parsing, dedupe/date, profile, versi
 const articleModule={exports:{}};
 let articleHtml='<html><nav>导航菜单'.repeat(1)+'</nav><div id="paragraph"><p>'+('这是已核实的新闻正文。'.repeat(15))+'</p><div><p>第二段详细内容应当被保留。</p></div></div><footer>不应该混入的推荐广告</footer></html>';
 const articleCode=ts.transpileModule(fs.readFileSync('app/lib/news-source.ts','utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText;
-vm.runInNewContext(articleCode,{module:articleModule,exports:articleModule.exports,URL,TextDecoder,require:()=>({safeBytes:async()=>({bytes:Buffer.from(articleHtml),type:'text/html; charset=utf-8',url:'https://example.com/story'})})});
+vm.runInNewContext(articleCode,{module:articleModule,exports:articleModule.exports,URL,TextDecoder,Uint8Array,process:{env:{}},fetch:async()=>({ok:true,status:200,headers:{get:name=>name.toLowerCase()==='content-type'?'text/html; charset=utf-8':name.toLowerCase()==='x-final-url'?encodeURIComponent('https://example.com/story'):null},arrayBuffer:async()=>Uint8Array.from(Buffer.from(articleHtml)).buffer,json:async()=>({})})});
 const article=(await articleModule.exports.readNewsLinks(['https://example.com/story']))[0];
 assert.match(article.text,/第二段详细内容/);assert.doesNotMatch(article.text,/推荐广告|导航菜单/);assert.match(article.text,/\n/);
 console.log('PASS: article container extraction and paragraph preservation.');
